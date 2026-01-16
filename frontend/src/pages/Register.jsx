@@ -1,4 +1,5 @@
 import handleRegister from "../api/register";
+import { Link } from "react-router-dom";
 
 export default function Register() {
     return (
@@ -18,7 +19,7 @@ export default function Register() {
                     <input type="password" name="password" required />
                 </div>
                 <button type="submit" onClick={handleRegister}>Register</button>
-                <a href="/login">Login</a>
+                <Link to="/login">Login</Link>
             </form>
         </div>
     );

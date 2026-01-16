@@ -1,3 +1,6 @@
+import handleLogin from "../api/login.js";
+import { Link } from "react-router-dom";
+
 export default function Login() {
     return (
         <div>
@@ -11,8 +14,8 @@ export default function Login() {
                     <label>Password:</label>    
                     <input type="password" name="password" required />
                 </div>
-                <button type="submit">Login</button>
-                <a href="/register">Register</a>
+                <button type="submit" onClick={handleLogin}>Login</button>
+                <Link to="/register">Register</Link>
             </form>
         </div>
     );
