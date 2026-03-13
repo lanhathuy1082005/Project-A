@@ -16,6 +16,8 @@ export default function Navbar() {
             <nav>
                 <p>Welcome, {user?.student_id || "Guest"}!</p>
                 <NavLink to="/"><PiHouseFill /> Home</NavLink>
+                <NavLink to="/history">History</NavLink>
+                <NavLink to="/items">Items</NavLink>
                 <div className="auth-links">
                 {user ? (
                     <NavLink to="/user-login" onClick={handleLogoutClick}><FaUnlockAlt />Logout</NavLink>

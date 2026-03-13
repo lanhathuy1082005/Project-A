@@ -1,4 +1,4 @@
-import { getAllReservations, getUserReservationsByStudentId, createReservation} from "../models/Reservation.js";
+import { getAllReservations, getUserReservationsByStudentId, createReservation, updateReservation} from "../models/Reservation.js";
 import { pool } from "../db.js";
 
 export const makeReservation = async (item_unit_id,user_id,timetable_id, scanned_item_unit_id) => {
@@ -17,38 +17,43 @@ export const getAdminReservations = async () => {
 }
 
 export const getAvailableItemsForStudent = async (user_id) => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const currentTime = now.toTimeString().slice(0, 8); // 'HH:MM:SS'
 
     const res = await pool.query(
-        `SELECT 
-            t.id AS timetable_id,
-            t.course_id,
-            t.day_of_week,
-            t.start_time,
-            t.end_time,
-            c.name AS course_name,
-            ci.item_id,
-            i.name AS item_name,
-            iu.id AS item_unit_id,
-            iu.serial_number,
-            l.name AS lab_name
-        FROM timetable_user tu
-        JOIN timetables t ON t.id = tu.timetable_id
-        JOIN courses c ON c.id = t.course_id
-        JOIN course_item ci ON ci.course_id = t.course_id
-        JOIN items i ON i.id = ci.item_id
-        JOIN item_units iu ON iu.item_id = ci.item_id
-        JOIN labs l ON l.id = iu.lab_id
-        LEFT JOIN reservations r ON r.item_unit_id = iu.id AND r.timetable_id = t.id
-        WHERE tu.user_id = $1
-           AND t.day_of_week = $2
-           AND t.start_time <= $3::time
-           AND t.end_time >= $3::time
-           AND (r.item_unit_id IS NULL OR r.actual_return_date IS NOT NULL)`,          
-        [user_id, dayOfWeek, currentTime]
+        `SELECT
+    t.id AS timetable_id,
+    t.course_id,
+    t.day_of_week,
+    t.start_time,
+    t.end_time,
+    c.name AS course_name,
+    ci.item_id,
+    i.name AS item_name,
+    iu.id AS item_unit_id,
+    iu.serial_number,
+    l.name AS lab_name
+FROM timetable_user tu
+JOIN timetable t ON t.id = tu.timetable_id
+JOIN courses c ON c.id = t.course_id
+JOIN course_item ci ON ci.course_id = t.course_id
+JOIN items i ON i.id = ci.item_id
+JOIN item_units iu ON iu.item_id = ci.item_id
+JOIN labs l ON l.id = iu.lab_id
+LEFT JOIN reservations r
+    ON r.item_unit_id = iu.id
+    AND r.timetable_id = t.id
+    AND r.actual_return_date IS NULL
+WHERE tu.user_id = $1
+AND r.item_unit_id IS NULL;`,          
+        [user_id]
     );
 
     return res.rows;
 };
+
+export const returnItem = async (reservation_id, actual_return_date) => {
+    const res = await pool.query(
+        `UPDATE reservations SET actual_return_date = $1 WHERE id = $2 RETURNING *`,
+        [actual_return_date, reservation_id]
+    );
+    return res.rows[0];
+}

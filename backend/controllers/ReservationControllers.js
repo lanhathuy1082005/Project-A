@@ -1,4 +1,4 @@
-import { getAvailableItemsForStudent, getAdminReservations, getUserReservations, makeReservation } from "../services/ReservationServices.js";
+import { getAvailableItemsForStudent, getAdminReservations, getUserReservations, makeReservation, returnItem } from "../services/ReservationServices.js";
 
 export const handleMakeReservation = async (req, res) => {
     const { item_unit_id, timetable_id, scanned_item_unit_id } = req.body;
@@ -38,6 +38,16 @@ export const handleGetAvailableItemsForStudent = async (req, res) => {
     try {
         const availableItems = await getAvailableItemsForStudent(user_id);
         return res.status(200).json(availableItems);
+    } catch (error) {
+        return res.status(500).json({ message: "Server error" });
+    }
+}
+
+export const handleReturnItem = async (req, res) => {
+    const { reservation_id, actual_return_date } = req.body;
+    try {
+        const reservation = await returnItem(reservation_id, actual_return_date);
+        return res.status(200).json(reservation);
     } catch (error) {
         return res.status(500).json({ message: "Server error" });
     }

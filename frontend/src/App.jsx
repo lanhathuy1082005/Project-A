@@ -6,6 +6,7 @@ import Home from "./pages/Home.jsx";
 import UserLogin from "./pages/UserLogin.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 import History from "./pages/History.jsx";
+import Item from "./pages/Item.jsx";
 import Loading from "./components/Loading.jsx";
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
         <Route path="/user-login" element={<UserLogin />} />
         <Route path="/admin-login" element={<AdminLogin />} />
         <Route path="/history" element={<History />} />
+        <Route path="/items" element={<Item />} />
       </Routes>
     </Router>
   );
