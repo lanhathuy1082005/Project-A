@@ -1,8 +1,16 @@
-import { useContext } from "react";
+import { useContext, useEffect } from "react";
 import { AuthContext } from "../context/AuthContext.jsx";
+import { useNavigate } from "react-router-dom";
 
 export default function Home() {
     const {user} = useContext(AuthContext);
+    const navigate = useNavigate();
+    useEffect(() => {
+        if (!user) {
+        navigate("/user-login");
+        return;
+        }
+    }, [user, navigate]);
 
     return (
         <div>

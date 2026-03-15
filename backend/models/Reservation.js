@@ -1,8 +1,8 @@
 import { pool } from "../db.js";
 
 //student
-export const getUserReservationsByStudentId = async (student_id) => {
-    const res = await pool.query('SELECT * FROM reservations WHERE user_id = $1 ORDER BY borrow_date DESC', [student_id]);
+export const getUserReservationsByStudentId = async (user_id) => {
+    const res = await pool.query('SELECT * FROM reservations WHERE user_id = $1 ORDER BY borrow_date DESC', [user_id]);
     return res.rows;
 }
 

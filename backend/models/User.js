@@ -1,22 +1,26 @@
 import { pool } from "../db.js";
 
-
-export const getAdminPasswordHash = async () => {
-  const res = await pool.query('SELECT password_hash FROM admins');
-  return res.rows[0].password_hash;
-}
-
-export const getUserByStudentId = async (student_id) => {
-  const res = await pool.query('SELECT * FROM users WHERE student_id = $1', [student_id]);
+export const getUserByUserId = async (user_id) => {
+  const res = await pool.query('SELECT u.id, u.user_id, u.password_hash, r.name as role FROM users u JOIN roles r ON u.role_id = r.id WHERE u.user_id = $1', [user_id]);
   return res.rows[0];
 }
 
-export const getUserTruthByStudentId = async (student_id) => {
-  const res = await pool.query('SELECT * FROM users_truth WHERE student_id = $1', [student_id]);
+export const getUserTruthByUserId = async (user_id) => {
+  const res = await pool.query('SELECT * FROM users_truth WHERE user_id = $1', [user_id]);
   return res.rows[0];
 }
 
-export const createUser = async (student_id, password_hash) => {
-  const res = await pool.query('INSERT INTO users (student_id, password_hash) VALUES ($1, $2) RETURNING *', [student_id, password_hash]);
+export const createUser = async (user_id, password_hash) => {
+  const res = await pool.query(`
+    WITH new_user AS (
+      INSERT INTO users (user_id, password_hash, role_id)
+      VALUES ($1, $2, $3)
+      RETURNING id, user_id, password_hash, role_id
+    )
+    SELECT nu.id, nu.user_id, nu.password_hash, r.name AS role
+    FROM new_user nu
+    JOIN roles r ON nu.role_id = r.id
+  `, [user_id, password_hash, 1]);
+
   return res.rows[0];
-}
+};

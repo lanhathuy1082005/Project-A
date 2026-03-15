@@ -6,7 +6,7 @@ import { AuthContext } from "../context/AuthContext.jsx";
 
 export default function UserLogin() {
     const {user, setUser} = useContext(AuthContext);
-    const [userData, setUserData] = useState({student_id: "", password: ""});
+    const [userData, setUserData] = useState({user_id: "", password: ""});
     const [message, setMessage] = useState("");
 
     const navigate = useNavigate();
@@ -36,8 +36,8 @@ export default function UserLogin() {
                 <h2>User Login Page</h2>
                     <form onSubmit={handleSubmit}>
                         <div>
-                            <label>Student Id:</label>
-                            <input type="text" name="student_id" onChange={handleChange}/>
+                            <label>User Id:</label>
+                            <input type="text" name="user_id" onChange={handleChange}/>
                         </div>
                         <div>
                             <label>Password:</label>
