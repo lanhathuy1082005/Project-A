@@ -16,3 +16,15 @@ export function requireRoles(...allowedRoles) {
     next();
   };
 }
+
+export function validateLogin(req, res, next) {
+  const { user_id, password } = req.body;
+
+  if (!user_id || !password) {
+    return res.status(400).json({
+      message: "Please provide both student id and password"
+    });
+  }
+
+  next();
+}

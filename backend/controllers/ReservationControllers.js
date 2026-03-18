@@ -4,8 +4,8 @@ export const handleMakeReservation = async (req, res) => {
     const { item_unit_id, timetable_id, scanned_item_unit_id } = req.body;
     const user_id = req.session.user.id;
     try {
-        const reservation = await makeReservation(item_unit_id, user_id, timetable_id, scanned_item_unit_id);
-        return res.status(201).json(reservation);
+        await makeReservation(item_unit_id, user_id, timetable_id, scanned_item_unit_id);
+        return res.status(201).json({ message: "Reservation created successfully" });
     } catch (error) {
         if (error.message === "Scanned item unit ID does not match expected item unit ID") {
             return res.status(400).json({ message: error.message });
@@ -44,9 +44,9 @@ export const handleGetAvailableItemsForStudent = async (req, res) => {
 }
 
 export const handleReturnItem = async (req, res) => {
-    const { reservation_id, actual_return_date } = req.body;
+    const { id, scanned_reservation_id } = req.body;
     try {
-        const reservation = await returnItem(reservation_id, actual_return_date);
+        const reservation = await returnItem(id, scanned_reservation_id);
         return res.status(200).json(reservation);
     } catch (error) {
         return res.status(500).json({ message: "Server error" });
