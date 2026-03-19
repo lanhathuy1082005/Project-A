@@ -54,9 +54,9 @@ export const getAvailableItemsForStudent = async (user_id) => {
     return res.rows;
 };
 
-export const returnItem = async (reservation_id, scanned_reservation_id) => {
-    if (scanned_reservation_id && scanned_reservation_id !== reservation_id) {
-        throw new Error("Scanned reservation ID does not match expected reservation ID");
+export const returnItem = async (id, item_unit_id, scanned_item_unit_id) => {
+    if (scanned_item_unit_id && scanned_item_unit_id !== item_unit_id) {
+        throw new Error("Scanned item unit ID does not match expected item unit ID");
     }
-    return await updateReservation(reservation_id);
+    await updateReservation(id);
 }

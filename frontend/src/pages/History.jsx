@@ -9,20 +9,21 @@ export default function History() {
   const {user} = useContext(AuthContext);
   const navigate = useNavigate();
   const [reservations, setReservations] = useState([]);
-  const [pendingItem, setPendingItem] = useState(null);
+  const [pendingReservation, setPendingReservation] = useState(null);
   const [showScanner, setShowScanner] = useState(false);
 
   const openScanner = (reservation) => {
-    setPendingItem(reservation);
+    setPendingReservation(reservation);
     setShowScanner(true);
   };
 
     const confirmReturn = async (scannedReservationId) => {
-      if (!pendingItem || !scannedReservationId) return;
+      if (!pendingReservation || !scannedReservationId) return;
       try {
-        await handleReturnItem(pendingItem.id, scannedReservationId);
+        await handleReturnItem(pendingReservation.id, pendingReservation.item_unit_id, scannedReservationId);
+
         setShowScanner(false);
-        setPendingItem(null);
+        setPendingReservation(null);
 
         const historyItems =await handleGetUserReservations();
         setReservations(historyItems);
@@ -33,7 +34,7 @@ export default function History() {
 
   const cancelScan = () => {
     setShowScanner(false);
-    setPendingItem(null);
+    setPendingReservation(null);
   };
 
   useEffect(() => {
@@ -64,7 +65,7 @@ export default function History() {
 
 
       {showScanner && <ItemQRScanner
-        pendingItem={pendingItem}
+        pendingItem={pendingReservation}
         buttonText="Confirm Return"
         confirmScan={confirmReturn}
         cancelScan={cancelScan}

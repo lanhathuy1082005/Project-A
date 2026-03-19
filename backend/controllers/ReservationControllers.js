@@ -44,11 +44,15 @@ export const handleGetAvailableItemsForStudent = async (req, res) => {
 }
 
 export const handleReturnItem = async (req, res) => {
-    const { id, scanned_reservation_id } = req.body;
+    const { id, item_unit_id, scanned_item_unit_id} = req.body;
+    console.log("Received return request for reservation ID:", id, "with item unit ID:", item_unit_id, "and scanned item unit ID:", scanned_item_unit_id);
     try {
-        const reservation = await returnItem(id, scanned_reservation_id);
-        return res.status(200).json(reservation);
+        await returnItem(id, item_unit_id, scanned_item_unit_id);
+        return res.status(200).json({ message: "Item returned successfully" });
     } catch (error) {
+        if (error.message === "Scanned item unit ID does not match expected item unit ID") {
+            return res.status(400).json({ message: error.message });
+        }
         return res.status(500).json({ message: "Server error" });
     }
 }

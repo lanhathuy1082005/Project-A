@@ -33,14 +33,14 @@ export const handleBorrowItem = async (itemUnitId, studentId, timetableId, scann
         return data;
 };
 
-export const handleReturnItem = async (reservationId, scannedReservationId) => {
+export const handleReturnItem = async (reservationId, itemUnitId, scannedUnitItemId) => {
         const response = await fetch('http://localhost:3000/users/me/reservations', {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
             },
             credentials: 'include',
-            body: JSON.stringify({ id: reservationId, scanned_reservation_id: scannedReservationId })
+            body: JSON.stringify({ id: reservationId, item_unit_id: itemUnitId, scanned_item_unit_id: scannedUnitItemId })
         });
         const data = await response.json();
         if (!response.ok) {
