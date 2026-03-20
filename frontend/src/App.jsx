@@ -9,19 +9,23 @@ import Item from "./pages/Item.jsx";
 import Loading from "./components/Loading.jsx";
 
 function App() {
-  const { loading } = useContext(AuthContext);
+  const { loading, user } = useContext(AuthContext);
 
   if (loading) return <Loading />;
 
   return (
     <Router>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/user-login" element={<UserLogin />} />
-        <Route path="/history" element={<History />} />
-        <Route path="/items" element={<Item />} />
-      </Routes>
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        {user && <Navbar />}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/user-login" element={<UserLogin />} />
+            <Route path="/history" element={<History />} />
+            <Route path="/items" element={<Item />} />
+          </Routes>
+        </div>
+      </div>
     </Router>
   );
 }

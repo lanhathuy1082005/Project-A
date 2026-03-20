@@ -55,14 +55,25 @@ export default function Item() {
   }, [user, navigate]);
 
   return (
-    <>
-      {items.map((item) => (
-        <ItemCard
-          key={item.availability_id}
-          item={item}
-          buttonLogic={() => openScanner(item)}
-        />
-      ))}
+    <div style={{ padding: '40px 48px' }}>
+      <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>Available Items</h1>
+      <p style={{ color: '#6b7280', marginBottom: '32px' }}>Items available for borrowing in your current timetable</p>
+
+      {items.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: '80px', fontSize: '1.1rem' }}>
+          No items available at the moment.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+          {items.map((item) => (
+            <ItemCard
+              key={item.availability_id}
+              item={item}
+              buttonLogic={() => openScanner(item)}
+            />
+          ))}
+        </div>
+      )}
 
       {showScanner && <ItemQRScanner
         pendingItem={pendingItem}
@@ -70,6 +81,6 @@ export default function Item() {
         confirmScan={confirmBorrow}
         cancelScan={cancelScan}
       />}
-    </>
+    </div>
   );
 }

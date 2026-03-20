@@ -13,9 +13,16 @@ export default function Home() {
     }, [user, navigate]);
 
     return (
-        <div>
-            {user && user.role === "admin" && <h2>Admin Home Page</h2>}
-            {user && user.role === "student" && <h2>Student Home Page</h2>}
+        <div style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '0 64px' }}>
+            <div>
+                <h1 style={{ fontSize: '3.2rem', fontWeight: '800', marginBottom: '24px' }}>
+                    Hello, {user?.user_id}!
+                </h1>
+                <p style={{ fontSize: '1.3rem', lineHeight: '1.8', color: '#222' }}>
+                    Welcome to the Asia Vietnam Lab Management System.<br />
+                    From here you can manage your classes, borrow lab equipment, and track your borrowing history.
+                </p>
+            </div>
         </div>
     );
 }

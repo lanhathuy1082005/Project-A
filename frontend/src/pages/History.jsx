@@ -54,15 +54,25 @@ export default function History() {
   }, [user, navigate]);
 
   return (
-    <>
-      {reservations.map((reservation) => (
-        <ReservationCard 
-          key={reservation.id} 
-          reservation={reservation} 
-          buttonLogic={() => openScanner(reservation)}
-        />
-      ))}
+    <div style={{ padding: '40px 48px' }}>
+      <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>Borrowing History</h1>
+      <p style={{ color: '#6b7280', marginBottom: '32px' }}>All your past and current item reservations</p>
 
+      {reservations.length === 0 ? (
+        <div style={{ textAlign: 'center', color: '#9ca3af', marginTop: '80px', fontSize: '1.1rem' }}>
+          No reservations found.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+          {reservations.map((reservation) => (
+            <ReservationCard
+              key={reservation.id}
+              reservation={reservation}
+              buttonLogic={() => openScanner(reservation)}
+            />
+          ))}
+        </div>
+      )}
 
       {showScanner && <ItemQRScanner
         pendingItem={pendingReservation}
@@ -70,6 +80,6 @@ export default function History() {
         confirmScan={confirmReturn}
         cancelScan={cancelScan}
       />}
-    </>
+    </div>
   );
 }
