@@ -1,29 +1,53 @@
-import { useContext } from "react";
-import { AuthContext } from "./context/AuthContext.jsx";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navbar from "./components/Navbar.jsx";
-import Home from "./pages/Home.jsx";
-import UserLogin from "./pages/UserLogin.jsx";
-import History from "./pages/History.jsx";
-import Item from "./pages/Item.jsx";
-import Loading from "./components/Loading.jsx";
+import { useContext }                         from 'react'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { AuthContext }                        from './context/AuthContext.jsx'
+import ProtectedRoute                         from './components/ProtectedRoute.jsx'
+import Navbar                                 from './components/Navbar.jsx'
+import Loading                                from './components/Loading.jsx'
+import Home                                   from './pages/Home.jsx'
+import Login                                  from './pages/Login.jsx'
+import Items                                  from './pages/Items.jsx'
+import History                                from './pages/History.jsx'
+import Face                                   from './pages/Face.jsx'
+import FaceTest                               from './pages/FaceTest.jsx'
 
 function App() {
-  const { loading } = useContext(AuthContext);
-
-  if (loading) return <Loading />;
+  const { loading } = useContext(AuthContext)
+  if (loading) return <Loading text="Đang khởi động..." />
 
   return (
     <Router>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/user-login" element={<UserLogin />} />
-        <Route path="/history" element={<History />} />
-        <Route path="/items" element={<Item />} />
+        {/* Public */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/face" element={<Face />} />
+        <Route path="/face-test" element={<FaceTest />} />
+
+        {/* Protected — any logged-in user */}
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Home />
+          </ProtectedRoute>
+        } />
+        <Route path="/history" element={
+          <ProtectedRoute allowedRoles={['student', 'admin']}>
+            <History />
+          </ProtectedRoute>
+        } />
+
+        {/* Protected — student only */}
+        <Route path="/items" element={
+          <ProtectedRoute allowedRoles={['student']}>
+            <Items />
+          </ProtectedRoute>
+        } />
+
+        {/* 404 */}
+        <Route path="*" element={<h1 style={{ padding: '24px' }}>404 - Not Found</h1>} />
       </Routes>
     </Router>
-  );
+  )
 }
 
-export default App;
+export default App

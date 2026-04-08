@@ -1,75 +1,102 @@
-import {useContext, useEffect, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
-import ReservationCard from '../components/ReservationCard.jsx';
-import ItemQRScanner from '../components/ItemQRScanner.jsx';
-import { handleGetAllReservations, handleGetUserReservations, handleReturnItem} from '../api/item.js';
-import {AuthContext} from '../context/AuthContext.jsx';
+import { useState, useContext }             from 'react'
+import { useNavigate }                       from 'react-router-dom'
+import { AuthContext }                       from '../context/AuthContext.jsx'
+import { returnItemApi }                     from '../api/reservation.api.js'
+import { useReservations }                   from '../hooks/useReservations.js'
+import ReservationCard                       from '../components/ReservationCard.jsx'
+import QRScanner                             from '../components/QRScanner.jsx'
+import Pagination                            from '../components/Pagination.jsx'
+import Loading                               from '../components/Loading.jsx'
 
 export default function History() {
-  const {user} = useContext(AuthContext);
-  const navigate = useNavigate();
-  const [reservations, setReservations] = useState([]);
-  const [pendingReservation, setPendingReservation] = useState(null);
-  const [showScanner, setShowScanner] = useState(false);
+  const { user }   = useContext(AuthContext)
+  const navigate   = useNavigate()
 
+  const { data, page, setPage, total, limit, loading, error, refetch } =
+    useReservations(user?.role)
+
+  const [pendingReservation, setPendingReservation] = useState(null)
+  const [actionError,        setActionError]        = useState(null)
+
+  console.log(data)
+  if (!user) { navigate('/login'); return null }
+
+  // ── Return handlers ────────────────────────────────────────────────────────
   const openScanner = (reservation) => {
-    setPendingReservation(reservation);
-    setShowScanner(true);
-  };
+    setActionError(null)
+    setPendingReservation(reservation)
+  }
 
-    const confirmReturn = async (scannedReservationId) => {
-      if (!pendingReservation || !scannedReservationId) return;
-      try {
-        await handleReturnItem(pendingReservation.id, pendingReservation.item_unit_id, scannedReservationId);
-
-        setShowScanner(false);
-        setPendingReservation(null);
-
-        const historyItems =await handleGetUserReservations();
-        setReservations(historyItems);
-      } catch (e) {
-        console.error(e);
-      }
-  };
+  const confirmReturn = async (scannedId) => {
+    if (!pendingReservation || !scannedId) return
+    setActionError(null)
+    try {
+      await returnItemApi(
+        pendingReservation.id,
+        pendingReservation.item_unit_id,
+        scannedId
+      )
+      setPendingReservation(null)
+      // FIX: refetch dùng đúng role (admin → getAllReservations, student → getMyReservations)
+      await refetch()
+    } catch (e) {
+      setActionError(e.message)
+    }
+  }
 
   const cancelScan = () => {
-    setShowScanner(false);
-    setPendingReservation(null);
-  };
+    setPendingReservation(null)
+    setActionError(null)
+  }
 
-  useEffect(() => {
-    if (!user) {
-      navigate("/user-login");
-      return;
-    }
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (loading) return <Loading />
 
-    const fetchHistory = async () => {
-    const historyItems = user.role === 'student'
-      ? await handleGetUserReservations()
-      : await handleGetAllReservations();
-    setReservations(historyItems);
-    };
-
-    fetchHistory();
-  }, [user, navigate]);
+  if (error) return (
+    <div style={{ padding: '24px', textAlign: 'center' }}>
+      <p style={{ color: 'var(--color-text-danger)', marginBottom: '12px' }}>{error}</p>
+      <button onClick={refetch}>Thử lại</button>
+    </div>
+  )
 
   return (
-    <>
-      {reservations.map((reservation) => (
-        <ReservationCard 
-          key={reservation.id} 
-          reservation={reservation} 
-          buttonLogic={() => openScanner(reservation)}
+    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
+      <h2 style={{ fontWeight: 500, marginBottom: '20px' }}>
+        {user.role === 'admin' ? 'Tất cả lịch sử mượn đồ' : 'Lịch sử của tôi'}
+      </h2>
+
+      {data.length === 0 ? (
+        <p style={{ color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '48px 0' }}>
+          Chưa có lịch sử mượn đồ nào.
+        </p>
+      ) : (
+        <div style={{ display: 'grid', gap: '12px' }}>
+          {data.map(r => (
+            <ReservationCard
+              key={r.id}
+              reservation={r}
+              onReturn={openScanner}
+            />
+          ))}
+        </div>
+      )}
+
+      <Pagination
+        page={page}
+        limit={limit}
+        total={total}
+        onPageChange={setPage}
+      />
+
+      {pendingReservation && (
+        <QRScanner
+          pendingLabel={pendingReservation.item_name}
+          buttonText="Xác nhận trả"
+          onResult={confirmReturn}
+          onCancel={cancelScan}
+          actionError={actionError}
         />
-      ))}
-
-
-      {showScanner && <ItemQRScanner
-        pendingItem={pendingReservation}
-        buttonText="Confirm Return"
-        confirmScan={confirmReturn}
-        cancelScan={cancelScan}
-      />}
-    </>
-  );
+      )}
+    </div>
+  )
 }

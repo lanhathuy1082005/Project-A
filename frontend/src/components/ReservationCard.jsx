@@ -1,22 +1,57 @@
-import { useContext } from "react";
-import { AuthContext } from "../context/AuthContext.jsx";
+import { useContext }  from 'react'
+import { AuthContext } from '../context/AuthContext.jsx'
+import { formatDate }  from '../utils/format.js'
 
-export default function ItemCard({ reservation, buttonLogic }) {
-    const {user} = useContext(AuthContext)
-    const { item_name, serial_number, user_id, borrow_date, actual_return_date, course_name, lab_name } = reservation;
+export default function ReservationCard({ reservation, onReturn }) {
+  const { user } = useContext(AuthContext)
+  const {
+    item_name, serial_number, user_code,
+    borrow_date, actual_return_date,
+    course_name, lab_name,
+  } = reservation
 
-    return (
+  const isReturned = !!actual_return_date
+
+  return (
+    <div style={{
+      background:   'var(--color-background-primary)',
+      border:       '0.5px solid var(--color-border-tertiary)',
+      borderRadius: '12px',
+      padding:      '16px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-            <h3>{item_name}</h3>
-            <p>Serial Number: {serial_number}</p>
-            {user.role == 'admin' && <p>User: {user_id}</p>} 
-            <p>Course: {course_name}</p>
-            <p>Borrow Date: {borrow_date}</p>
-            {actual_return_date && <p>Actual Return Date: {actual_return_date}</p>}
-            <p>From Lab: {lab_name}</p>
-            <button onClick={() => buttonLogic(reservation.id)} disabled={reservation.actual_return_date !== null}>
-                {actual_return_date ? 'Returned' : 'Return'}
-            </button>
+          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 500 }}>{item_name}</h3>
+          <p style={{ margin: 0, fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
+            SN: {serial_number}
+          </p>
         </div>
-    );
+        <span style={{
+          fontSize: '11px', padding: '3px 8px', borderRadius: '4px', fontWeight: 500,
+          background: isReturned ? 'var(--color-background-success)' : 'var(--color-background-warning)',
+          color:      isReturned ? 'var(--color-text-success)'       : 'var(--color-text-warning)',
+        }}>
+          {isReturned ? 'Đã trả' : 'Đang mượn'}
+        </span>
+      </div>
+
+      <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {user?.role === 'admin' && <span>Người mượn: <strong>{user_code}</strong></span>}
+        <span>Môn học: {course_name}</span>
+        <span>Phòng lab: {lab_name}</span>
+        <span>Ngày mượn: {formatDate(borrow_date)}</span>
+        {isReturned && <span>Ngày trả: {formatDate(actual_return_date)}</span>}
+      </div>
+
+      {/* Chỉ student mới thấy nút trả, và chỉ khi chưa trả */}
+      {user?.role === 'student' && !isReturned && (
+        <button
+          onClick={() => onReturn(reservation)}
+          style={{ marginTop: '12px', width: '100%' }}
+        >
+          Trả thiết bị
+        </button>
+      )}
+    </div>
+  )
 }
