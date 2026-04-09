@@ -3,7 +3,7 @@ import { createReservation, markReturned,
          getUserReservations, getAllReservations }        from '../models/Reservation.js';
 import { AppError }                                      from '../utils/AppError.js';
 
-// ── In-process lock (single instance). Dùng Redis nếu scale multi-instance ───
+// ── In-process lock (single instance). Use Redis if scaling to multiple instances ───
 const activeLocks = new Set();
 
 const withLock = async (key, fn) => {
@@ -72,6 +72,12 @@ export const makeReservation = async (scanned_item_unit_id, user_id) => {
 
       const reservation = await createReservation(item_unit_id, user_id, timetable_id, client);
       if (!reservation) throw new AppError('Device is already being borrowed by another user', 409);
+
+      // Mark item_unit as Borrowed
+      await client.query(
+        `UPDATE item_units SET status = 'Borrowed' WHERE id = $1`,
+        [item_unit_id]
+      );
 
       await client.query('COMMIT');
       return reservation;

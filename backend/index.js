@@ -10,6 +10,8 @@ import { apiLimiter }        from './middleware/rateLimiter.js';
 import { errorHandler }      from './middleware/errorHandler.js';
 import authRoutes            from './routes/auth.routes.js';
 import reservationRoutes     from './routes/reservation.routes.js';
+import feedbackRoutes        from './routes/feedback.routes.js';
+import adminRoutes           from './routes/admin.routes.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -40,14 +42,16 @@ app.use('/api', apiLimiter);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',         authRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/feedback',     feedbackRoutes);
+app.use('/api/admin',        adminRoutes);
 
 // ─── Health check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-// ─── Error handler (phải đặt cuối cùng) ───────────────────────────────────────
+// ─── Error handler (must be placed last) ───────────────────────────────────────
 app.use(errorHandler);
 
-// ─── Server: HTTPS nếu có cert, HTTP fallback ──────────────────────────────────
+// ─── Server: HTTPS if cert exists, HTTP fallback ──────────────────────────────────
 const keyPath  = process.env.SSL_KEY_PATH;
 const certPath = process.env.SSL_CERT_PATH;
 

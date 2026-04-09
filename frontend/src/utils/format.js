@@ -1,6 +1,6 @@
 /**
  * Format ISO timestamp → "15/01/2024, 10:30"
- * Trả về "—" nếu value null/undefined
+ * Returns "—" if value is null/undefined
  */
 export const formatDate = (iso) =>
   iso
@@ -14,10 +14,10 @@ export const formatDate = (iso) =>
     : '—'
 
 /**
- * Chuyển "monday" → "Thứ Hai", v.v.
+ * Convert "monday" → "Monday", etc.
  */
 const DAY_MAP = {
-  monday: 'Thứ Hai', tuesday: 'Thứ Ba', wednesday: 'Thứ Tư',
-  thursday: 'Thứ Năm', friday: 'Thứ Sáu', saturday: 'Thứ Bảy', sunday: 'Chủ Nhật',
+  monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
+  thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday',
 }
 export const formatDay = (day) => DAY_MAP[day?.toLowerCase()] ?? day

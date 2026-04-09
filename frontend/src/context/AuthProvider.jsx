@@ -9,7 +9,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     fetchCurrentUser()
       .then(data => setUser(data.user))
-      .catch(() => setUser(null))          // 401 = chưa login, không phải lỗi
+      .catch(() => setUser(null))          // 401 = not logged in, not an error
       .finally(() => setLoading(false))
   }, [])
 

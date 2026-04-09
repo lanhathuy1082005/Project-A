@@ -7,7 +7,7 @@ export const loginLimiter = rateLimit({
   message:         { message: 'Too many login attempts. Please try again later.' },
   standardHeaders: true,
   legacyHeaders:   false,
-  skipSuccessfulRequests: true,           // không đếm login thành công
+  skipSuccessfulRequests: true,           // skip counting successful logins
 });
 
 // General API limiter

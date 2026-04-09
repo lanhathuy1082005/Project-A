@@ -7,6 +7,8 @@ import ReservationCard                       from '../components/ReservationCard
 import QRScanner                             from '../components/QRScanner.jsx'
 import Pagination                            from '../components/Pagination.jsx'
 import Loading                               from '../components/Loading.jsx'
+import FeedbackPopup                         from '../components/FeedbackPopup.jsx'
+import { useToast }                          from '../components/Toast.jsx'
 
 export default function History() {
   const { user }   = useContext(AuthContext)
@@ -17,6 +19,8 @@ export default function History() {
 
   const [pendingReservation, setPendingReservation] = useState(null)
   const [actionError,        setActionError]        = useState(null)
+  const [showFeedback,       setShowFeedback]       = useState(false)
+  const addToast = useToast()
 
   console.log(data)
   if (!user) { navigate('/login'); return null }
@@ -37,6 +41,7 @@ export default function History() {
         scannedId
       )
       setPendingReservation(null)
+      addToast('Item returned successfully', 'success')
       // FIX: refetch dùng đúng role (admin → getAllReservations, student → getMyReservations)
       await refetch()
     } catch (e) {
@@ -97,6 +102,14 @@ export default function History() {
           actionError={actionError}
         />
       )}
+
+      {user?.role === 'student' && (
+        <button onClick={() => setShowFeedback(true)} style={{ marginTop: '16px', width: '100%' }}>
+          Send Feedback
+        </button>
+      )}
+
+      <FeedbackPopup open={showFeedback} onClose={() => setShowFeedback(false)} />
     </div>
   )
 }

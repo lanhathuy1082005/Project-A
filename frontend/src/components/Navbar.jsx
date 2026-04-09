@@ -41,6 +41,19 @@ export default function Navbar() {
         <NavLink to="/items">Borrow Items</NavLink>
       )}
 
+      {user?.role === 'admin' && (
+        <>
+          <NavLink to="/admin/dashboard">Dashboard</NavLink>
+          <NavLink to="/admin/classes">Classes</NavLink>
+          <NavLink to="/admin/inventory">Inventory</NavLink>
+          <NavLink to="/admin/reservations">Reservations</NavLink>
+          <NavLink to="/admin/verification">Verification</NavLink>
+          <NavLink to="/admin/logs">Logs</NavLink>
+          <NavLink to="/admin/checklist">Checklist</NavLink>
+          <NavLink to="/admin/feedback">Feedback</NavLink>
+        </>
+      )}
+
       {user && (
         <NavLink to="/history">History</NavLink>
       )}
