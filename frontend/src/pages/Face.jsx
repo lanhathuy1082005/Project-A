@@ -6,7 +6,8 @@ import { faceCaptureApi } from '../api/auth.api.js'
 export default function Face() {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
-
+  const isRunningRef = useRef(true)
+  const [mode,         setMode]         = useState(null) // 'attendance-check' or 'face-registration'
   const [modelsLoaded, setModelsLoaded] = useState(false)
   const [cameraReady,  setCameraReady]  = useState(false)
   const [showCamera,   setShowCamera]   = useState(true)
@@ -16,7 +17,9 @@ export default function Face() {
   // ── Load model ────────────────────────────────────────────────────────────
   useEffect(() => {
     faceapi.nets.tinyFaceDetector.loadFromUri('/models')
-      .then(() => setModelsLoaded(true))
+      .then(() => {
+        setModelsLoaded(true)
+      })
       .catch(err => console.error('Model load failed:', err))
   }, [])
 
@@ -36,22 +39,50 @@ export default function Face() {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
     }
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null // Stop video stream
+    }
   }
 
   useEffect(() => {
+    if (!mode){
+      stopCamera()
+      return
+    }
     startCamera()
     return stopCamera
-  }, [])
+  }, [mode])
+
+  const switchMode = (newMode) => {
+  stopCamera()
+  setCameraReady(false)
+  setShowCamera(true)
+  setToken(null)
+  setError(null)
+  isRunningRef.current = false
+  setMode(newMode)
+}
 
   // ── Detection loop ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!modelsLoaded || !cameraReady) return
+    if (!modelsLoaded || !cameraReady || !mode) return
 
-    const timeout = setTimeout(() => {
-      const interval = setInterval(async () => {
-        const video = videoRef.current
-        if (!video || video.readyState !== 4) return
+    isRunningRef.current = true
+    let interval
 
+    interval = setInterval(async () => {
+      if (!isRunningRef.current) {
+        return
+      }
+
+      const video = videoRef.current
+      if (!video || video.readyState !== 4) {
+        return
+      }
+
+
+      try {
         const canvas = document.createElement('canvas')
         canvas.width  = video.videoWidth
         canvas.height = video.videoHeight
@@ -60,34 +91,59 @@ export default function Face() {
 
         const img = new Image()
         img.src = dataUrl
-        img.onload = async () => {
-          const detection = await faceapi.detectSingleFace(
-            img,
-            new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.3 })
-          )
-
-          if (detection) {
-            clearInterval(interval)
-            stopCamera()
-            setShowCamera(false)
-
-            // Send image to backend, get token
-            try {
-              const res = await faceCaptureApi(dataUrl)
-              setError(null)
-              setToken(res.data.token)
-            } catch (err) {
-              setError(err.message)
+        
+        // Use Promise wrapper to handle async image loading
+        await new Promise((resolve) => {
+          img.onload = async () => {
+            if (!isRunningRef.current) {
+              resolve()
+              return
             }
+
+            const detection = await faceapi.detectSingleFace(
+              img,
+              new faceapi.TinyFaceDetectorOptions(
+                { inputSize: 416, scoreThreshold: 0.3 }
+              )
+            )
+
+            if (!isRunningRef.current) {
+              resolve()
+              return
+            }
+
+            if (detection) {
+              isRunningRef.current = false
+              
+              if (interval) clearInterval(interval)
+              stopCamera()
+              setShowCamera(false)
+              try {
+              const res = await faceCaptureApi(dataUrl)
+              setToken(res.token)
+              } catch (err) {
+              setError(err.message)
+              }
+            }
+            resolve()
           }
-        }
-      }, 500)
+          img.onerror = () => {
+            console.error('Image load error')
+            resolve()
+          }
+        })
+      } catch (err) {
+        console.error('Detection error:', err)
+      }
+    }, 500)
 
-      return () => clearInterval(interval)
-    }, 2000)
-
-    return () => clearTimeout(timeout)
-  }, [modelsLoaded, cameraReady])
+    return () => {
+      isRunningRef.current = false
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [mode, modelsLoaded, cameraReady])
 
   // ── Reset: show camera again after QR expires or is used ──────────────────
   const reset = () => {
@@ -101,16 +157,17 @@ export default function Face() {
 
   // ── QR value ──────────────────────────────────────────────────────────────
   const qrUrl = token
-    ? `${window.location.origin}/login?face_token=${token}`
+    ? `${window.location.origin}/login?face_token=${token}&mode=${mode}`
     : null
 
   return (
-    <div style={{ padding: '24px', maxWidth: '500px', margin: '0 auto' }}>
-      <h2 style={{ fontWeight: 500, marginBottom: '20px' }}>Đăng ký khuôn mặt</h2>
-
+    <div>
+      <h2>{mode === 'face-registration' ? 'Face Registration' : 'Attendance Check-in'}</h2>
+      {mode ? (
+        <>
       {showCamera && (
         <>
-          <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+          <p>
             Look at the camera...
           </p>
           <video
@@ -119,34 +176,46 @@ export default function Face() {
             muted
             playsInline
             onCanPlay={() => setCameraReady(true)}
-            style={{ width: '100%', borderRadius: '8px', background: '#000' }}
           />
         </>
       )}
 
       {qrUrl && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-          <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)' }}>
-            Scan this QR code with your phone to link your face to your account. It will expire in 5 minutes.
+        <div>
+          <p>
+            Scan this QR code with your phone to link your face to your account. It will expire in 2 minutes.
           </p>
-          <div style={{ padding: '16px', background: '#fff', borderRadius: '8px' }}>
+          <div>
             <QRCode value={qrUrl} size={200} />
           </div>
-          <button onClick={reset}>Quét lại</button>
+          <button onClick={reset}>Rescan</button>
         </div>
       )}
 
       {error && (
-        <div style={{ marginTop: '12px' }}>
-          <p style={{
-            fontSize: '13px', padding: '8px 12px', borderRadius: '6px',
-            background: 'var(--color-background-danger)', color: 'var(--color-text-danger)',
-          }}>
+        <div>
+          <p>
             {error}
           </p>
-          <button onClick={reset} style={{ marginTop: '8px' }}>Try again</button>
+          <button onClick={reset}>Try again</button>
         </div>
+      )} 
+        </>
+        ) : (
+        <>
+          <p>
+            Please select a mode:
+          </p>
+        <div>
+          <button onClick={() => switchMode('face-registration')}>
+            Face Registration
+          </button>
+          <button onClick={() => switchMode('attendance-check')}>
+            Attendance Check-in
+          </button>
+        </div>
+        </>
       )}
     </div>
-  )
+   )
 }

@@ -26,7 +26,7 @@ export default function Home() {
     <div style={{ padding: '24px', maxWidth: '600px', margin: '0 auto' }}>
       <h2 style={{ fontWeight: 500, marginBottom: '8px' }}>Trang chủ</h2>
       <p style={{ color: 'var(--color-text-secondary)', marginBottom: '24px' }}>
-        Xin chào, {user.user_id}. Chọn chức năng bên dưới:
+        Xin chào, {user.id}. Chọn chức năng bên dưới:
       </p>
       <div style={{ display: 'grid', gap: '12px' }}>
         <button onClick={() => navigate('/items')}>

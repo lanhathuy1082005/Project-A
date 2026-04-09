@@ -9,11 +9,10 @@ import Login                                  from './pages/Login.jsx'
 import Items                                  from './pages/Items.jsx'
 import History                                from './pages/History.jsx'
 import Face                                   from './pages/Face.jsx'
-import FaceTest                               from './pages/FaceTest.jsx'
 
 function App() {
   const { loading } = useContext(AuthContext)
-  if (loading) return <Loading text="Đang khởi động..." />
+  if (loading) return <Loading text="Loading..." />
 
   return (
     <Router>
@@ -22,7 +21,6 @@ function App() {
         {/* Public */}
         <Route path="/login" element={<Login />} />
         <Route path="/face" element={<Face />} />
-        <Route path="/face-test" element={<FaceTest />} />
 
         {/* Protected — any logged-in user */}
         <Route path="/" element={

@@ -1,17 +1,48 @@
 import { useState, useEffect, useContext } from 'react'
-import { useNavigate }                      from 'react-router-dom'
+import { useNavigate, useSearchParams }                      from 'react-router-dom'
 import { AuthContext }                      from '../context/AuthContext.jsx'
-import { loginApi }                         from '../api/auth.api.js'
+import { loginApi, logoutApi }                         from '../api/auth.api.js'
+import Popup                                          from '../components/LoginSuccessPopup.jsx'
 
 export default function Login() {
+  const [searchParams] = useSearchParams()
+  const faceToken       = searchParams.get('face_token')
+  const mode            = searchParams.get('mode')
   const { user, setUser } = useContext(AuthContext)
   const navigate           = useNavigate()
 
-  const [form,    setForm]    = useState({ id: '', password: '' })
+  const [form,    setForm]    = useState({ id: '', password: '', faceToken: faceToken || null, mode: mode || null })
+  const [showFaceLoginSuccessPopup, setShowFaceLoginSuccessPopup] = useState(false)
   const [error,   setError]   = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => { if (user) navigate('/') }, [user, navigate])
+  const isFaceLogin = Boolean(faceToken || mode === 'face')
+
+  useEffect(() => {
+    if (user && !showFaceLoginSuccessPopup) {
+      navigate('/')
+    }
+
+    const prepFaceLogin = async () => {
+      if (faceToken) {
+        await logoutApi()
+      }
+    }
+
+    // If there's a face token in the URL, we want to log out any existing session to prepare for face login flow
+    prepFaceLogin()
+  }, [user, navigate, faceToken, showFaceLoginSuccessPopup])
+
+  useEffect(() => {
+    if (!showFaceLoginSuccessPopup) return
+
+    const timer = setTimeout(() => {
+      setShowFaceLoginSuccessPopup(false)
+      navigate('/')
+    }, 1700)
+
+    return () => clearTimeout(timer)
+  }, [showFaceLoginSuccessPopup, navigate])
 
   const handleChange = (e) =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -24,7 +55,11 @@ export default function Login() {
       console.log(form)
       const data = await loginApi(form)
       setUser(data.user)
-      navigate('/')
+      if (isFaceLogin) {
+        setShowFaceLoginSuccessPopup(true)
+      } else {
+        navigate('/')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -56,7 +91,7 @@ export default function Login() {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-              Mã sinh viên / Tài khoản
+              Student ID / Account
             </label>
             <input
               name="id"
@@ -70,11 +105,11 @@ export default function Login() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-              Mật khẩu
+              Password
             </label>
             <input
               name="password"
-              type="password"          /* FIX: đổi từ "text" → "password" */
+              type="password"          
               autoComplete="current-password"
               value={form.password}
               onChange={handleChange}
@@ -94,10 +129,16 @@ export default function Login() {
           )}
 
           <button type="submit" disabled={loading} style={{ marginTop: '4px' }}>
-            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
       </div>
+
+      <Popup
+        open={showFaceLoginSuccessPopup}
+        title={mode === 'face-registration' ? 'Face Registration Successful' : 'Attendance Check Successful'}
+        message={mode === 'face-registration' ? 'Face registration succeeded. Redirecting to home...' : 'Attendance check succeeded. Redirecting to home...'}
+      />
     </div>
   )
 }

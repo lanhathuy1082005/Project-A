@@ -23,7 +23,7 @@ export default function Navbar() {
       fontSize:       '14px',
     }}>
       <span style={{ color: 'var(--color-text-secondary)', marginRight: 'auto' }}>
-        Xin chào, <strong>{user?.id ?? 'Khách'}</strong>
+        Welcome, <strong>{user?.id ?? 'Guest'}</strong>
         {user?.role && (
           <span style={{
             marginLeft: '6px', fontSize: '11px', padding: '2px 6px',
@@ -35,20 +35,20 @@ export default function Navbar() {
         )}
       </span>
 
-      <NavLink to="/">Trang chủ</NavLink>
+      <NavLink to="/">Home</NavLink>
 
       {user?.role === 'student' && (
-        <NavLink to="/items">Mượn đồ</NavLink>
+        <NavLink to="/items">Borrow Items</NavLink>
       )}
 
       {user && (
-        <NavLink to="/history">Lịch sử</NavLink>
+        <NavLink to="/history">History</NavLink>
       )}
 
       {user ? (
-        <button onClick={handleLogout}>Đăng xuất</button>
+        <button onClick={handleLogout}>Logout</button>
       ) : (
-        <NavLink to="/login">Đăng nhập</NavLink>
+        <NavLink to="/login">Login</NavLink>
       )}
     </nav>
   )

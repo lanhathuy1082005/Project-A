@@ -1,19 +1,33 @@
-import { loginUserService, captureFace, consumeToken } from '../services/AuthService.js';
+import { loginUserService, captureFace, consumeTokenForFaceRegistration, consumeTokenForAttendanceCheck } from '../services/AuthService.js';
 import { AppError }         from '../utils/AppError.js';
 
 export const login = async (req, res, next) => {
   try {
-    const { id, password, faceToken } = req.body;
+    const { id, password, faceToken, mode } = req.body;
+    console.log(`[Login] id=${id}, faceToken=${faceToken ? 'present' : 'none'}, mode=${mode}`)
+    const user = await loginUserService(id, password);
     // If face token is provided, attempt to consume it (link face image to user)
-    if (faceToken) {
-      await consumeToken(id, faceToken);
+    let msg = 'Login successful'
+    if (faceToken && mode === 'face-registration') {
+      console.log(`[Login] Entering face-registration flow`)
+      await consumeTokenForFaceRegistration(user.id, faceToken);
+      msg = 'Face registration successful'
+    } else if (faceToken && mode === 'attendance-check') {
+      console.log(`[Login] Entering attendance-check flow`)
+      await consumeTokenForAttendanceCheck(user.id, faceToken);
+      msg = 'Attendance check-in successful'
+    } else {
+      console.log(`[Login] Normal login (no face flow). faceToken=${faceToken}, mode=${mode}`)
     }
 
     // Proceed with normal login flow
-    const user = await loginUserService(id, password);
     req.session.user = user;
-    return res.status(200).json({ message: 'Login successful', user });
-  } catch (err) { next(err); }
+    console.log(`[Login] Success: ${msg}`)
+    return res.status(200).json({ message: msg, user });
+  } catch (err) { 
+    console.error(`[Login] Error:`, err.message)
+    next(err); 
+  }
 };
 
 export const logout = (req, res, next) => {
@@ -33,10 +47,10 @@ export const getMe = (req, res) => {
 
 export const handleFaceCapture = async (req, res, next) => {
   try {
-    const { dataURL } = req.body;
-    if (!dataURL) throw new AppError('No image provided', 400);
+    const { dataUrl } = req.body;
+    if (!dataUrl) throw new AppError('No image provided', 400);
 
-    const token = await captureFace(dataURL);
+    const token = await captureFace(dataUrl);
     return res.status(200).json({ token });
   } catch (err) { next(err); }
 }

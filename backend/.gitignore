@@ -25,3 +25,5 @@ dist-ssr
 *.sw?
 
 __pycache__/
+services/face/reference_faces/*
+!services/face/reference_faces/.gitkeep

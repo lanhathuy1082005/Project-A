@@ -4,12 +4,11 @@ Run: uvicorn face_service:app --host 0.0.0.0 --port 8000 --reload
 """
 
 import os
-import uuid
 import base64
-import shutil
 from pathlib import Path
 
-from fastapi            import FastAPI, UploadFile, File, HTTPException, status
+from fastapi            import FastAPI, HTTPException, status
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic           import BaseModel
 from deepface          import DeepFace
@@ -24,8 +23,13 @@ ALLOWED_ORIGINS = os.getenv("FACE_CORS_ORIGINS", "http://localhost:3000").split(
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    DeepFace.build_model("ArcFace")
+    yield
 
-app = FastAPI(title="Face Service", version="1.0.0")
+
+app = FastAPI(title="Face Service", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +44,7 @@ app.add_middleware(
 
 class VerifyRequest(BaseModel):
     user_id:    str
-    image_b64:  str   # base64-encoded JPEG/PNG từ browser
+    image_b64:  str   # base64-encoded JPEG/PNG from AuthService
 
 
 class VerifyResponse(BaseModel):
@@ -53,8 +57,8 @@ class VerifyResponse(BaseModel):
 
 class FaceService:
     MODEL     = "ArcFace"
-    DETECTOR  = "retinaface"
-    THRESHOLD = 0.50        # khoảng cách tối đa để coi là khớp
+    DETECTOR  = "mtcnn"
+    THRESHOLD = 0.50       # maximum distance to be considered match
 
     # ── File helpers ──────────────────────────────────────────────────────────
 
@@ -62,17 +66,13 @@ class FaceService:
     def face_path(user_id: str) -> Path:
         return FACES_DIR / f"{user_id}.jpg"
 
-    @classmethod
-    def is_registered(cls, user_id: str) -> bool:
-        return cls.face_path(user_id).exists()
-
     # ── Core verify ───────────────────────────────────────────────────────────
 
     @classmethod
     def verify(cls, probe_path: str, user_id: str) -> VerifyResponse:
         ref = cls.face_path(user_id)
         if not ref.exists():
-            raise FileNotFoundError(f"Chưa đăng ký khuôn mặt cho user: {user_id}")
+            raise FileNotFoundError(f"Face likely not registered for: {user_id}")
 
         result = DeepFace.verify(
             img1_path        = probe_path,
@@ -84,17 +84,9 @@ class FaceService:
         )
         return VerifyResponse(
             verified  = result["verified"] and result["distance"] < cls.THRESHOLD,
-            distance  = round(result["distance"], 4),
+            distance  = round(result["distance"], 2),
             threshold = cls.THRESHOLD,
         )
-
-    # ── Register ──────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def save_image(user_id: str, src_path: str) -> str:
-        dest = FaceService.face_path(user_id)
-        shutil.copy(src_path, dest)
-        return str(dest)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -103,59 +95,25 @@ class FaceService:
 def health():
     return {"status": "ok", "faces_dir": str(FACES_DIR)}
 
-
-@app.post("/face/register")
-async def register_face(user_id: str, file: UploadFile = File(...)):
-    """
-    Nhận ảnh multipart, lưu vào reference_faces/{user_id}.jpg
-    Gọi từ Express sau khi user upload qua POST /api/users/me/face
-    """
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Wrong format")
-
-    tmp = Path(f"/tmp/{uuid.uuid4()}.jpg")
-    try:
-        with open(tmp, "wb") as f:
-            shutil.copyfileobj(file.file, f)
-
-        # Kiểm tra có detect được mặt không trước khi lưu
-        faces = DeepFace.extract_faces(
-            img_path         = str(tmp),
-            detector_backend = FaceService.DETECTOR,
-            enforce_detection= False,
-        )
-        if not faces:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                "No face detected in file")
-
-        saved_path = FaceService.save_image(user_id, str(tmp))
-        return {"message": "Face registration success", "path": saved_path}
-
-    finally:
-        if tmp.exists():
-            tmp.unlink()
-
-
+def ensure_b64_prefix(b64: str) -> str:
+    if b64.startswith("data:image"):
+        return b64
+    return f"data:image/jpeg;base64,{b64}"
+    
 @app.post("/face/verify", response_model=VerifyResponse)
 async def verify_face(req: VerifyRequest):
     """
-    Nhận ảnh base64 + user_id, trả về kết quả xác thực.
-    Gọi từ Express khi student check-in điểm danh.
+    Get base64 + user_id, return verification results.
+    Called from Express when student does attendance check.
     """
-    if not FaceService.is_registered(req.user_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND,
-                            "Haven't face-registered for this account")
 
-    tmp = Path(f"/tmp/{uuid.uuid4()}.jpg")
     try:
         img_data = base64.b64decode(req.image_b64)
-        tmp.write_bytes(img_data)
+        b64_string = ensure_b64_prefix(base64.b64encode(img_data).decode('utf-8')) #redundant but im hopeless
 
-        result = FaceService.verify(str(tmp), req.user_id)
 
-        if not result.verified:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED,
-                                f"Khuôn mặt không khớp (distance={result.distance})")
+        result = FaceService.verify(probe_path= b64_string,user_id= req.user_id)
+
         return result
 
     except HTTPException:
@@ -163,16 +121,4 @@ async def verify_face(req: VerifyRequest):
     except FileNotFoundError as e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
     except Exception as e:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Lỗi xác thực: {e}")
-    finally:
-        if tmp.exists():
-            tmp.unlink()
-
-
-@app.delete("/face/{user_id}")
-async def delete_face(user_id: str):
-    path = FaceService.face_path(user_id)
-    if not path.exists():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
-    path.unlink()
-    return {"message": "Đã xóa ảnh khuôn mặt"}
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Server error: {e}")

@@ -26,6 +26,24 @@ export const createUser = async (id, password_hash) => {
   return rows[0];
 };
 
-export const updateFacePath = async (id, path) => {
-  await pool.query('UPDATE users SET face_image_path = $1 WHERE id = $2', [path, id])
+export const createAttendanceRecord = async (userId, timetableId) => {
+  const { rows } = await pool.query(
+    `INSERT INTO attendance (user_id, timetable_id)
+     VALUES ($1, $2) 
+     RETURNING *`,
+    [userId, timetableId]
+  );
+  return rows[0];
+};
+
+export const getValidTimetableForUser = async (userId) => {
+  const { rows } = await pool.query(
+    `SELECT t.id FROM timetable t
+    JOIN timetable_user tu ON tu.timetable_id = t.id
+    WHERE tu.user_id = $1 
+    AND t.day_of_week = EXTRACT(DOW FROM NOW())
+    AND NOW()::TIME BETWEEN t.start_time AND t.end_time;`,
+    [userId]
+  );
+  return rows[0] ?? null;
 }
