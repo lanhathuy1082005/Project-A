@@ -55,14 +55,24 @@ export default function Face() {
   }, [mode])
 
   const switchMode = (newMode) => {
-  stopCamera()
-  setCameraReady(false)
-  setShowCamera(true)
-  setToken(null)
-  setError(null)
-  isRunningRef.current = false
-  setMode(newMode)
-}
+    stopCamera()
+    setCameraReady(false)
+    setShowCamera(true)
+    setToken(null)
+    setError(null)
+    isRunningRef.current = false
+    setMode(newMode)
+  }
+
+  const goBack = () => {
+    stopCamera()
+    setCameraReady(false)
+    setShowCamera(true)
+    setToken(null)
+    setError(null)
+    isRunningRef.current = false
+    setMode(null)
+  }
 
   // ── Detection loop ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -165,6 +175,8 @@ export default function Face() {
       <h2>{mode === 'face-registration' ? 'Face Registration' : 'Attendance Check-in'}</h2>
       {mode ? (
         <>
+      <button onClick={goBack}>← Back</button>
+
       {showCamera && (
         <>
           <p>
