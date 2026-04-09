@@ -5,7 +5,7 @@ import { formatDate }  from '../utils/format.js'
 export default function ReservationCard({ reservation, onReturn }) {
   const { user } = useContext(AuthContext)
   const {
-    item_name, serial_number, user_code,
+    item_name, user_id,
     borrow_date, actual_return_date,
     course_name, lab_name,
   } = reservation
@@ -22,28 +22,24 @@ export default function ReservationCard({ reservation, onReturn }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 500 }}>{item_name}</h3>
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-            SN: {serial_number}
-          </p>
         </div>
         <span style={{
           fontSize: '11px', padding: '3px 8px', borderRadius: '4px', fontWeight: 500,
           background: isReturned ? 'var(--color-background-success)' : 'var(--color-background-warning)',
           color:      isReturned ? 'var(--color-text-success)'       : 'var(--color-text-warning)',
         }}>
-          {isReturned ? 'Đã trả' : 'Đang mượn'}
+          {isReturned ? 'Returned' : 'Borrowed'}
         </span>
       </div>
 
       <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {user?.role === 'admin' && <span>Người mượn: <strong>{user_code}</strong></span>}
-        <span>Môn học: {course_name}</span>
-        <span>Phòng lab: {lab_name}</span>
-        <span>Ngày mượn: {formatDate(borrow_date)}</span>
-        {isReturned && <span>Ngày trả: {formatDate(actual_return_date)}</span>}
+        {user?.role === 'admin' && <span>User: <strong>{user_id}</strong></span>}
+        <span>Course: {course_name}</span>
+        <span>Lab Room: {lab_name}</span>
+        <span>Borrow Date: {formatDate(borrow_date)}</span>
+        {isReturned && <span>Return Date: {formatDate(actual_return_date)}</span>}
       </div>
 
-      {/* Chỉ student mới thấy nút trả, và chỉ khi chưa trả */}
       {user?.role === 'student' && !isReturned && (
         <button
           onClick={() => onReturn(reservation)}

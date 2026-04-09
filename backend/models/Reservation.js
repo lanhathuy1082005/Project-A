@@ -1,12 +1,11 @@
 import { pool } from '../config/db.js';
 
-// ── Dùng view v_reservations (xem migration/views.sql) ───────────────────────
-
 export const getUserReservations = async (user_id, { limit, offset }) => {
   const [rows, count] = await Promise.all([
     pool.query(
       `SELECT * FROM v_reservations
        WHERE user_id = $1
+       AND actual_return_date IS NULL
        ORDER BY borrow_date DESC
        LIMIT $2 OFFSET $3`,
       [user_id, limit, offset]
@@ -54,3 +53,13 @@ export const markReturned = async (reservation_id) => {
   );
   return rows[0] ?? null;   // null = đã trả rồi hoặc id sai
 };
+
+export const markApproved = async (reservation_id) => {
+  const { rows } = await pool.query(
+    `UPDATE reservations
+     SET approved = TRUE
+     WHERE id = $1 AND approved = NULL
+      RETURNING *`, [reservation_id]
+    );
+  return rows[0] ?? null;  
+}
