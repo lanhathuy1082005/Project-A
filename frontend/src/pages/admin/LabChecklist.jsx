@@ -25,15 +25,20 @@ export default function LabChecklist() {
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '900px', margin: '0 auto' }}>
-      <h2 style={{ fontWeight: 500, marginBottom: '16px' }}>Lab Checklist</h2>
-      <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
-        Select a lab to view all devices for periodic maintenance or audit checks.
-      </p>
+    <div style={{ padding: '40px 48px' }}>
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontWeight: 800, fontSize: '2rem', marginBottom: '6px', color: '#111', margin: 0 }}>
+          Lab Checklist
+        </h1>
+        <p style={{ fontSize: '14px', color: '#6b7280', marginTop: '6px', marginBottom: 0 }}>
+          View all devices in each lab for maintenance audits.
+        </p>
+      </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <select value={selectedLab || ''} onChange={e => loadChecklist(parseInt(e.target.value))}>
-          <option value="">Select a lab...</option>
+      <div style={{ marginBottom: '28px' }}>
+        <label style={labelStyle}>Select Lab</label>
+        <select value={selectedLab || ''} onChange={e => loadChecklist(parseInt(e.target.value))} style={inputStyle}>
+          <option value="">Choose a lab...</option>
           {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -41,49 +46,60 @@ export default function LabChecklist() {
       {loading && <Loading />}
 
       {!loading && selectedLab && checklist.length === 0 && (
-        <p style={{ color: 'var(--color-text-tertiary)' }}>No items found in this lab.</p>
+        <p style={{ color: '#9ca3af', textAlign: 'center', padding: '48px 0' }}>No items found in this lab.</p>
       )}
 
       {!loading && checklist.length > 0 && (
         <>
-          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+          <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
             Total: {checklist.length} device(s)
           </p>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Unit ID</th>
-                <th style={thStyle}>Item</th>
-                <th style={thStyle}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {checklist.map(c => (
-                <tr key={c.id}>
-                  <td style={tdStyle}>{c.id}</td>
-                  <td style={tdStyle}>{c.item_name}</td>
-                  <td style={tdStyle}>
-                    <span style={{
-                      fontSize: '11px', padding: '2px 8px', borderRadius: '4px', fontWeight: 500,
-                      background: c.status === 'Available' ? 'var(--color-background-success)' :
-                                  c.status === 'Borrowed' ? 'var(--color-background-warning)' :
-                                  'var(--color-background-danger)',
-                      color: c.status === 'Available' ? 'var(--color-text-success)' :
-                             c.status === 'Borrowed' ? 'var(--color-text-warning)' :
-                             'var(--color-text-danger)',
-                    }}>
-                      {c.status}
-                    </span>
-                  </td>
+          <div style={tableCard}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f9fafb' }}>
+                  <th style={thStyle}>Unit ID</th>
+                  <th style={thStyle}>Item</th>
+                  <th style={thStyle}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {checklist.map(c => (
+                  <tr key={c.id}>
+                    <td style={tdStyle}><span style={idBadge}>#{c.id}</span></td>
+                    <td style={{ ...tdStyle, fontWeight: 600, color: '#111' }}>{c.item_name}</td>
+                    <td style={tdStyle}>
+                      <span style={{ ...statusBadge, ...statusStyle(c.status) }}>{c.status}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>
   )
 }
 
-const thStyle = { textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--color-border-tertiary)', fontSize: '13px', color: 'var(--color-text-secondary)' }
-const tdStyle = { padding: '8px 12px', borderBottom: '1px solid var(--color-border-tertiary)', fontSize: '14px' }
+const statusStyle = (status) => {
+  if (status === 'Available') return { backgroundColor: '#d1fae5', color: '#047857' }
+  if (status === 'Borrowed')  return { backgroundColor: '#fef3c7', color: '#b45309' }
+  return { backgroundColor: '#fee2e2', color: '#991b1b' }
+}
+
+const thStyle = {
+  textAlign: 'left', padding: '12px 16px',
+  borderBottom: '1px solid #e5e7eb',
+  fontSize: '12px', color: '#6b7280',
+  fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+}
+const tdStyle = {
+  padding: '14px 16px', borderBottom: '1px solid #f3f4f6',
+  fontSize: '14px', color: '#374151',
+}
+const tableCard = { backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '16px', overflow: 'hidden' }
+const labelStyle = { display: 'block', fontSize: '13px', color: '#6b7280', fontWeight: 600, marginBottom: '6px' }
+const inputStyle = { width: '100%', padding: '10px 16px', borderRadius: '12px', border: '1.5px solid #e5e7eb', fontSize: '14px', outline: 'none', boxSizing: 'border-box', backgroundColor: '#fff' }
+const statusBadge = { fontSize: '12px', padding: '4px 10px', borderRadius: '999px', fontWeight: 600 }
+const idBadge = { fontSize: '12px', color: '#6b7280', fontWeight: 600 }

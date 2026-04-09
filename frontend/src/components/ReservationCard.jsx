@@ -1,6 +1,6 @@
-import { useContext }  from 'react'
-import { AuthContext } from '../context/AuthContext.jsx'
-import { formatDate }  from '../utils/format.js'
+import { useState, useContext } from 'react'
+import { AuthContext }          from '../context/AuthContext.jsx'
+import { formatDate }           from '../utils/format.js'
 
 export default function ReservationCard({ reservation, onReturn }) {
   const { user } = useContext(AuthContext)
@@ -11,41 +11,63 @@ export default function ReservationCard({ reservation, onReturn }) {
   } = reservation
 
   const isReturned = !!actual_return_date
+  const [hovered, setHovered] = useState(false)
 
   return (
     <div style={{
-      background:   'var(--color-background-primary)',
-      border:       '0.5px solid var(--color-border-tertiary)',
-      borderRadius: '12px',
-      padding:      '16px',
+      backgroundColor: '#fff',
+      border:          '1px solid #e5e7eb',
+      borderRadius:    '16px',
+      padding:         '20px 24px',
+      boxShadow:       '0 2px 8px rgba(0,0,0,0.06)',
+      transition:      'box-shadow 0.18s ease',
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 500 }}>{item_name}</h3>
+          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111' }}>{item_name}</h3>
         </div>
         <span style={{
-          fontSize: '11px', padding: '3px 8px', borderRadius: '4px', fontWeight: 500,
-          background: isReturned ? 'var(--color-background-success)' : 'var(--color-background-warning)',
-          color:      isReturned ? 'var(--color-text-success)'       : 'var(--color-text-warning)',
+          fontSize: '12px', padding: '4px 12px', borderRadius: '999px', fontWeight: 600,
+          backgroundColor: isReturned ? '#dcfce7' : '#fef9c3',
+          color:           isReturned ? '#16a34a' : '#a16207',
         }}>
-          {isReturned ? 'Returned' : 'Borrowed'}
+          {isReturned ? 'Returned' : 'Borrowing'}
         </span>
       </div>
 
-      <div style={{ marginTop: '12px', fontSize: '13px', color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {user?.role === 'admin' && <span>User: <strong>{user_id}</strong></span>}
-        <span>Course: {course_name}</span>
-        <span>Lab Room: {lab_name}</span>
-        <span>Borrow Date: {formatDate(borrow_date)}</span>
-        {isReturned && <span>Return Date: {formatDate(actual_return_date)}</span>}
+      <div style={{
+        marginTop: '14px', fontSize: '13px', color: '#4b5563',
+        display: 'flex', flexDirection: 'column', gap: '5px',
+        borderTop: '1px solid #f0f0f0', paddingTop: '12px',
+      }}>
+        {user?.role === 'admin' && <span>Borrower: <strong style={{ color: '#111' }}>{user_id}</strong></span>}
+        <span>Course: <strong style={{ color: '#111' }}>{course_name}</strong></span>
+        <span>Lab: <strong style={{ color: '#111' }}>{lab_name}</strong></span>
+        <span>Borrowed: {formatDate(borrow_date)}</span>
+        {isReturned && <span>Returned: {formatDate(actual_return_date)}</span>}
       </div>
 
       {user?.role === 'student' && !isReturned && (
         <button
           onClick={() => onReturn(reservation)}
-          style={{ marginTop: '12px', width: '100%' }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            marginTop:       '14px',
+            width:           '100%',
+            padding:         '11px',
+            borderRadius:    '999px',
+            border:          'none',
+            backgroundColor: hovered ? '#b91c1c' : '#dc2626',
+            color:           '#fff',
+            fontWeight:      700,
+            fontSize:        '14px',
+            cursor:          'pointer',
+            transform:       hovered ? 'scale(1.02)' : 'scale(1)',
+            transition:      'background-color 0.18s ease, transform 0.18s ease',
+          }}
         >
-          Trả thiết bị
+          Return Item
         </button>
       )}
     </div>

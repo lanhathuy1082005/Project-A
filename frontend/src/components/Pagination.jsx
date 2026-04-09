@@ -1,13 +1,11 @@
-/**
- * Props:
- *   page        — trang hiện tại (1-indexed)
- *   limit       — số item mỗi trang
- *   total       — tổng số item
- *   onPageChange — callback(newPage)
- */
+import { useState } from 'react'
+
 export default function Pagination({ page, limit, total, onPageChange }) {
   const totalPages = Math.ceil(total / limit)
   if (totalPages <= 1) return null
+
+  const [hoveredPrev, setHoveredPrev] = useState(false)
+  const [hoveredNext, setHoveredNext] = useState(false)
 
   return (
     <div style={{
@@ -15,31 +13,53 @@ export default function Pagination({ page, limit, total, onPageChange }) {
       alignItems:     'center',
       justifyContent: 'center',
       gap:            '12px',
-      padding:        '16px 0',
+      padding:        '24px 0',
       fontSize:       '14px',
-      color:          'var(--color-text-secondary)',
+      color:          '#6b7280',
     }}>
       <button
         onClick={() => onPageChange(page - 1)}
         disabled={page === 1}
-        style={{ cursor: page === 1 ? 'not-allowed' : 'pointer' }}
+        onMouseEnter={() => setHoveredPrev(true)}
+        onMouseLeave={() => setHoveredPrev(false)}
+        style={{
+          padding:         '8px 20px',
+          borderRadius:    '999px',
+          border:          'none',
+          backgroundColor: page === 1 ? '#e5e7eb' : hoveredPrev ? '#b91c1c' : '#dc2626',
+          color:           page === 1 ? '#9ca3af' : '#fff',
+          fontWeight:      600,
+          fontSize:        '13px',
+          cursor:          page === 1 ? 'not-allowed' : 'pointer',
+          transition:      'background-color 0.18s ease',
+        }}
       >
-        ← Trước
+        ← Prev
       </button>
 
-      <span>
-        Trang <strong>{page}</strong> / {totalPages}
-        <span style={{ color: 'var(--color-text-tertiary)', marginLeft: '8px' }}>
-          ({total} kết quả)
-        </span>
+      <span style={{ fontSize: '13px' }}>
+        Page <strong style={{ color: '#111' }}>{page}</strong> / {totalPages}
+        <span style={{ color: '#9ca3af', marginLeft: '8px' }}>({total} results)</span>
       </span>
 
       <button
         onClick={() => onPageChange(page + 1)}
         disabled={page === totalPages}
-        style={{ cursor: page === totalPages ? 'not-allowed' : 'pointer' }}
+        onMouseEnter={() => setHoveredNext(true)}
+        onMouseLeave={() => setHoveredNext(false)}
+        style={{
+          padding:         '8px 20px',
+          borderRadius:    '999px',
+          border:          'none',
+          backgroundColor: page === totalPages ? '#e5e7eb' : hoveredNext ? '#b91c1c' : '#dc2626',
+          color:           page === totalPages ? '#9ca3af' : '#fff',
+          fontWeight:      600,
+          fontSize:        '13px',
+          cursor:          page === totalPages ? 'not-allowed' : 'pointer',
+          transition:      'background-color 0.18s ease',
+        }}
       >
-        Tiếp →
+        Next →
       </button>
     </div>
   )

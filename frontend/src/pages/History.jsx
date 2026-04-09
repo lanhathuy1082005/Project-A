@@ -42,7 +42,6 @@ export default function History() {
       )
       setPendingReservation(null)
       addToast('Item returned successfully', 'success')
-      // FIX: refetch dùng đúng role (admin → getAllReservations, student → getMyReservations)
       await refetch()
     } catch (e) {
       setActionError(e.message)
@@ -58,24 +57,36 @@ export default function History() {
   if (loading) return <Loading />
 
   if (error) return (
-    <div style={{ padding: '24px', textAlign: 'center' }}>
-      <p style={{ color: 'var(--color-text-danger)', marginBottom: '12px' }}>{error}</p>
-      <button onClick={refetch}>Thử lại</button>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <div style={{ textAlign: 'center' }}>
+        <p style={{ color: '#f87171', marginBottom: '16px' }}>{error}</p>
+        <button onClick={refetch} style={{
+          padding: '10px 28px', borderRadius: '999px',
+          backgroundColor: '#dc2626', color: '#fff',
+          border: 'none', fontWeight: 700, cursor: 'pointer',
+        }}>Retry</button>
+      </div>
     </div>
   )
 
   return (
-    <div style={{ padding: '24px', maxWidth: '800px', margin: '0 auto' }}>
-      <h2 style={{ fontWeight: 500, marginBottom: '20px' }}>
-        {user.role === 'admin' ? 'Tất cả lịch sử mượn đồ' : 'Lịch sử của tôi'}
-      </h2>
+    <div style={{ padding: '40px 48px' }}>
+      <h1 style={{ fontWeight: 800, fontSize: '2rem', marginBottom: '6px', color: '#111', fontFamily: "'Open Sans', sans-serif" }}>
+        {user.role === 'admin' ? 'All Borrow History' : 'My History'}
+      </h1>
+      <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '28px' }}>
+        {user.role === 'admin' ? 'All reservation records in the system.' : 'Your personal borrowing records.'}
+      </p>
 
       {data.length === 0 ? (
-        <p style={{ color: 'var(--color-text-tertiary)', textAlign: 'center', padding: '48px 0' }}>
-          Chưa có lịch sử mượn đồ nào.
-        </p>
+        <div style={{
+          textAlign: 'center', padding: '64px 0',
+          color: '#9ca3af', fontSize: '15px',
+        }}>
+          No reservation records found.
+        </div>
       ) : (
-        <div style={{ display: 'grid', gap: '12px' }}>
+        <div style={{ display: 'grid', gap: '14px' }}>
           {data.map(r => (
             <ReservationCard
               key={r.id}
@@ -93,20 +104,44 @@ export default function History() {
         onPageChange={setPage}
       />
 
-      {pendingReservation && (
-        <QRScanner
-          pendingLabel={pendingReservation.item_name}
-          buttonText="Xác nhận trả"
-          onResult={confirmReturn}
-          onCancel={cancelScan}
-          actionError={actionError}
-        />
-      )}
-
       {user?.role === 'student' && (
-        <button onClick={() => setShowFeedback(true)} style={{ marginTop: '16px', width: '100%' }}>
+        <button
+          onClick={() => setShowFeedback(true)}
+          style={{
+            marginTop: '16px', width: '100%',
+            padding: '14px', borderRadius: '999px',
+            backgroundColor: '#dc2626', color: '#fff',
+            border: 'none', fontWeight: 700, fontSize: '15px', cursor: 'pointer',
+          }}
+        >
           Send Feedback
         </button>
+      )}
+
+      {pendingReservation && (
+        <div
+          onClick={cancelScan}
+          style={{
+            position:        'fixed',
+            inset:           0,
+            backgroundColor: 'rgba(0,0,0,0.65)',
+            zIndex:          200,
+            display:         'flex',
+            justifyContent:  'center',
+            alignItems:      'center',
+            padding:         '24px',
+          }}
+        >
+          <div onClick={e => e.stopPropagation()}>
+            <QRScanner
+              pendingLabel={pendingReservation.item_name}
+              buttonText="Confirm Return"
+              onResult={confirmReturn}
+              onCancel={cancelScan}
+              actionError={actionError}
+            />
+          </div>
+        </div>
       )}
 
       <FeedbackPopup open={showFeedback} onClose={() => setShowFeedback(false)} />

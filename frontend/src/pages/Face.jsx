@@ -13,6 +13,11 @@ export default function Face() {
   const [showCamera,   setShowCamera]   = useState(true)
   const [token,        setToken]        = useState(null)
   const [error,        setError]        = useState(null)
+  const [hoveredBack,       setHoveredBack]       = useState(false)
+  const [hoveredRescan,     setHoveredRescan]     = useState(false)
+  const [hoveredTryAgain,   setHoveredTryAgain]   = useState(false)
+  const [hoveredRegister,   setHoveredRegister]   = useState(false)
+  const [hoveredAttendance, setHoveredAttendance] = useState(false)
 
   // ── Load model ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,7 +106,7 @@ export default function Face() {
 
         const img = new Image()
         img.src = dataUrl
-        
+
         // Use Promise wrapper to handle async image loading
         await new Promise((resolve) => {
           img.onload = async () => {
@@ -124,7 +129,7 @@ export default function Face() {
 
             if (detection) {
               isRunningRef.current = false
-              
+
               if (interval) clearInterval(interval)
               stopCamera()
               setShowCamera(false)
@@ -171,63 +176,192 @@ export default function Face() {
     : null
 
   return (
-    <div>
-      <h2>{mode === 'face-registration' ? 'Face Registration' : 'Attendance Check-in'}</h2>
-      {mode ? (
-        <>
-      <button onClick={goBack}>← Back</button>
+    <div style={{
+      display:         'flex',
+      flexDirection:   'column',
+      justifyContent:  'center',
+      alignItems:      'center',
+      minHeight:       '100vh',
+      backgroundColor: '#fff',
+      padding:         '24px',
+    }}>
+      <div style={{
+        backgroundColor: '#111',
+        borderRadius:    '24px',
+        padding:         '40px 36px',
+        width:           '100%',
+        maxWidth:        '460px',
+        display:         'flex',
+        flexDirection:   'column',
+        gap:             '20px',
+        color:           '#fff',
+      }}>
+        <h2 style={{ margin: 0, fontWeight: 800, fontSize: '1.6rem' }}>
+          {mode === 'face-registration' ? 'Face Registration' : 'Attendance Check-in'}
+        </h2>
 
-      {showCamera && (
-        <>
-          <p>
-            Look at the camera...
-          </p>
-          <video
-            ref={videoRef}
-            autoPlay
-            muted
-            playsInline
-            onCanPlay={() => setCameraReady(true)}
-          />
-        </>
-      )}
+        {mode ? (
+          <>
+            <button
+              onClick={goBack}
+              onMouseEnter={() => setHoveredBack(true)}
+              onMouseLeave={() => setHoveredBack(false)}
+              style={{
+                alignSelf:       'flex-start',
+                background:      hoveredBack ? 'rgba(255,255,255,0.12)' : 'transparent',
+                border:          '1.5px solid #fff',
+                borderRadius:    '999px',
+                color:           '#fff',
+                padding:         '6px 18px',
+                fontSize:        '13px',
+                fontWeight:      600,
+                cursor:          'pointer',
+                transition:      'background 0.18s ease',
+              }}
+            >
+              ← Back
+            </button>
 
-      {qrUrl && (
-        <div>
-          <p>
-            Scan this QR code with your phone to link your face to your account. It will expire in 2 minutes.
-          </p>
-          <div>
-            <QRCode value={qrUrl} size={200} />
-          </div>
-          <button onClick={reset}>Rescan</button>
-        </div>
-      )}
+            {showCamera && (
+              <>
+                <p style={{ margin: 0, fontSize: '14px', color: '#9ca3af' }}>
+                  Look at the camera. Detection will happen automatically.
+                </p>
+                <div style={{ borderRadius: '16px', overflow: 'hidden', border: '2px solid #dc2626' }}>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    onCanPlay={() => setCameraReady(true)}
+                    style={{ width: '100%', display: 'block' }}
+                  />
+                </div>
+                {!cameraReady && (
+                  <p style={{ margin: 0, fontSize: '13px', color: '#6b7280', textAlign: 'center' }}>
+                    Starting camera...
+                  </p>
+                )}
+              </>
+            )}
 
-      {error && (
-        <div>
-          <p>
-            {error}
-          </p>
-          <button onClick={reset}>Try again</button>
-        </div>
-      )} 
-        </>
+            {qrUrl && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                <p style={{ margin: 0, fontSize: '14px', color: '#9ca3af', textAlign: 'center' }}>
+                  Scan this QR code with your phone to link your face. Expires in 2 minutes.
+                </p>
+                <div style={{
+                  backgroundColor: '#fff',
+                  borderRadius:    '16px',
+                  padding:         '16px',
+                  display:         'inline-block',
+                }}>
+                  <QRCode value={qrUrl} size={200} />
+                </div>
+                <button
+                  onClick={reset}
+                  onMouseEnter={() => setHoveredRescan(true)}
+                  onMouseLeave={() => setHoveredRescan(false)}
+                  style={{
+                    padding:         '11px 32px',
+                    borderRadius:    '999px',
+                    border:          'none',
+                    backgroundColor: hoveredRescan ? '#b91c1c' : '#dc2626',
+                    color:           '#fff',
+                    fontWeight:      700,
+                    fontSize:        '14px',
+                    cursor:          'pointer',
+                    transform:       hoveredRescan ? 'scale(1.03)' : 'scale(1)',
+                    transition:      'background-color 0.18s ease, transform 0.18s ease',
+                  }}
+                >
+                  Rescan
+                </button>
+              </div>
+            )}
+
+            {error && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  padding:         '10px 16px',
+                  borderRadius:    '12px',
+                  backgroundColor: 'rgba(220,38,38,0.15)',
+                  color:           '#f87171',
+                  fontSize:        '13px',
+                  width:           '100%',
+                  textAlign:       'center',
+                }}>
+                  {error}
+                </div>
+                <button
+                  onClick={reset}
+                  onMouseEnter={() => setHoveredTryAgain(true)}
+                  onMouseLeave={() => setHoveredTryAgain(false)}
+                  style={{
+                    padding:         '11px 32px',
+                    borderRadius:    '999px',
+                    border:          'none',
+                    backgroundColor: hoveredTryAgain ? '#b91c1c' : '#dc2626',
+                    color:           '#fff',
+                    fontWeight:      700,
+                    fontSize:        '14px',
+                    cursor:          'pointer',
+                    transform:       hoveredTryAgain ? 'scale(1.03)' : 'scale(1)',
+                    transition:      'background-color 0.18s ease, transform 0.18s ease',
+                  }}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+          </>
         ) : (
-        <>
-          <p>
-            Please select a mode:
-          </p>
-        <div>
-          <button onClick={() => switchMode('face-registration')}>
-            Face Registration
-          </button>
-          <button onClick={() => switchMode('attendance-check')}>
-            Attendance Check-in
-          </button>
-        </div>
-        </>
-      )}
+          <>
+            <p style={{ margin: 0, fontSize: '14px', color: '#9ca3af' }}>
+              Please select a mode:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                onClick={() => switchMode('face-registration')}
+                onMouseEnter={() => setHoveredRegister(true)}
+                onMouseLeave={() => setHoveredRegister(false)}
+                style={{
+                  padding:         '13px',
+                  borderRadius:    '999px',
+                  border:          'none',
+                  backgroundColor: hoveredRegister ? '#b91c1c' : '#dc2626',
+                  color:           '#fff',
+                  fontWeight:      700,
+                  fontSize:        '15px',
+                  cursor:          'pointer',
+                  transform:       hoveredRegister ? 'scale(1.02)' : 'scale(1)',
+                  transition:      'background-color 0.18s ease, transform 0.18s ease',
+                }}
+              >
+                Face Registration
+              </button>
+              <button
+                onClick={() => switchMode('attendance-check')}
+                onMouseEnter={() => setHoveredAttendance(true)}
+                onMouseLeave={() => setHoveredAttendance(false)}
+                style={{
+                  padding:         '13px',
+                  borderRadius:    '999px',
+                  border:          '1.5px solid #fff',
+                  backgroundColor: hoveredAttendance ? 'rgba(255,255,255,0.12)' : 'transparent',
+                  color:           '#fff',
+                  fontWeight:      700,
+                  fontSize:        '15px',
+                  cursor:          'pointer',
+                  transition:      'background-color 0.18s ease',
+                }}
+              >
+                Attendance Check-in
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
-   )
+  )
 }

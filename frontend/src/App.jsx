@@ -26,7 +26,9 @@ function App() {
 
   return (
     <Router>
-      <Navbar />
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        <Navbar />
+        <div style={{ flex: 1, overflowY: 'auto', height: '100vh' }}>
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Login />} />
@@ -80,6 +82,8 @@ function App() {
         {/* 404 */}
         <Route path="*" element={<h1 style={{ padding: '24px' }}>404 - Not Found</h1>} />
       </Routes>
+        </div>
+      </div>
     </Router>
   )
 }
