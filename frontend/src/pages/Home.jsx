@@ -1,107 +1,89 @@
-import { useState, useContext } from 'react'
-import { useNavigate }          from 'react-router-dom'
-import { AuthContext }          from '../context/AuthContext.jsx'
+import { useState, useEffect, useContext } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { AuthContext } from '../context/AuthContext.jsx'
 
 export default function Home() {
-  const { user }  = useContext(AuthContext)
-  const navigate  = useNavigate()
+  const { user } = useContext(AuthContext)
+  const navigate = useNavigate()
   const [hoveredBtn, setHoveredBtn] = useState(null)
 
-  if (!user) return null
+    useEffect(() => {
+    if (user?.role === 'admin' && location.pathname === '/') {
+      navigate('/admin/dashboard')
+    }
+  }, [user, navigate])
 
-  if (user.role === 'admin') {
-    const adminButtons = [
-      { label: 'Dashboard →',    path: '/admin/dashboard' },
-      { label: 'Class Management →', path: '/admin/classes' },
-      { label: 'Inventory →',    path: '/admin/inventory' },
-      { label: 'Borrow & Return →', path: '/admin/reservations' },
-      { label: 'Verification Panel →', path: '/admin/verification' },
-      { label: 'Logs & Reports →', path: '/admin/logs' },
-      { label: 'Lab Checklist →', path: '/admin/checklist' },
-      { label: 'Feedback →',     path: '/admin/feedback' },
-      { label: 'See history →',  path: '/history' },
-    ]
+  if (!user|| user.role !== 'student') return null
 
-    return (
-      <div style={{
-        display: 'flex', justifyContent: 'center', alignItems: 'center',
-        height: '100vh', padding: '24px',
-      }}>
-        <div style={{ width: '100%', maxWidth: '560px' }}>
-          <h1 style={{ fontWeight: 800, fontSize: '2rem', marginBottom: '10px', color: '#111' }}>
-            Homepage
-          </h1>
-          <p style={{ fontSize: '1rem', color: '#6b7280', marginBottom: '32px' }}>
-            Welcome, <strong style={{ color: '#111' }}>{user.id}</strong>.
-          </p>
-          <div style={{ display: 'grid', gap: '12px' }}>
-            {adminButtons.map(btn => (
-              <button
-                key={btn.path}
-                onClick={() => navigate(btn.path)}
-                onMouseEnter={() => setHoveredBtn(btn.path)}
-                onMouseLeave={() => setHoveredBtn(null)}
-                style={{
-                  padding: '14px', borderRadius: '999px',
-                  backgroundColor: hoveredBtn === btn.path ? '#b91c1c' : '#dc2626',
-                  color: '#fff',
-                  border: 'none', fontWeight: 700, fontSize: '15px', cursor: 'pointer',
-                  transform: hoveredBtn === btn.path ? 'scale(1.02)' : 'scale(1)',
-                  transition: 'background-color 0.18s ease, transform 0.18s ease',
-                }}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
+  const studentButtons = [
+    { label: 'Borrow →', path: '/items' },
+    { label: 'See history →', path: '/history' },
+  ]
+
+  // Resolver function (this is the key part)
+  const getButtonsByRole = (role) => {
+    switch (role) {
+      case 'student':
+        return studentButtons
+      default:
+        return []
+    }
   }
+
+  const buttons = getButtonsByRole(user.role)
 
   return (
     <div style={{
-      display: 'flex', justifyContent: 'center', alignItems: 'center',
-      height: '100vh', padding: '24px',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      height: '100vh',
+      padding: '24px',
     }}>
       <div style={{ width: '100%', maxWidth: '560px' }}>
-        <h1 style={{ fontWeight: 800, fontSize: '3rem', marginBottom: '10px', color: '#111', fontFamily: "'Open Sans', sans-serif" }}>
+
+        {user.role === 'student' &&
+        <h1 style={{
+          fontWeight: 800,
+          fontSize: '3rem',
+          marginBottom: '10px',
+          color: '#111',
+        }}>
           Homepage
-        </h1>
-        <p style={{ fontSize: '1rem', color: '#6b7280', marginBottom: '32px' }}>
-          Welcome, <strong style={{ color: '#111' }}>{user.id}</strong>. Select a function below:
+        </h1>}
+
+        <p style={{
+          fontSize: '1rem',
+          color: '#6b7280',
+          marginBottom: '32px'
+        }}>
+          Welcome, <strong style={{ color: '#111' }}>{user.id}</strong>.
+          {user.role === 'student' && ' Select a function below:'}
         </p>
+
         <div style={{ display: 'grid', gap: '12px' }}>
-          <button
-            onClick={() => navigate('/items')}
-            onMouseEnter={() => setHoveredBtn('items')}
-            onMouseLeave={() => setHoveredBtn(null)}
-            style={{
-              padding: '14px', borderRadius: '999px',
-              backgroundColor: hoveredBtn === 'items' ? '#b91c1c' : '#dc2626',
-              color: '#fff',
-              border: 'none', fontWeight: 700, fontSize: '15px', cursor: 'pointer',
-              transform: hoveredBtn === 'items' ? 'scale(1.02)' : 'scale(1)',
-              transition: 'background-color 0.18s ease, transform 0.18s ease',
-            }}
-          >
-            Borrow →
-          </button>
-          <button
-            onClick={() => navigate('/history')}
-            onMouseEnter={() => setHoveredBtn('history')}
-            onMouseLeave={() => setHoveredBtn(null)}
-            style={{
-              padding: '14px', borderRadius: '999px',
-              backgroundColor: hoveredBtn === 'history' ? '#b91c1c' : '#dc2626',
-              color: '#fff',
-              border: 'none', fontWeight: 700, fontSize: '15px', cursor: 'pointer',
-              transform: hoveredBtn === 'history' ? 'scale(1.02)' : 'scale(1)',
-              transition: 'background-color 0.18s ease, transform 0.18s ease',
-            }}
-          >
-            See history →
-          </button>
+          {buttons.map(btn => (
+            <button
+              key={btn.path}
+              onClick={() => navigate(btn.path)}
+              onMouseEnter={() => setHoveredBtn(btn.path)}
+              onMouseLeave={() => setHoveredBtn(null)}
+              style={{
+                padding: '14px',
+                borderRadius: '999px',
+                backgroundColor: hoveredBtn === btn.path ? '#b91c1c' : '#dc2626',
+                color: '#fff',
+                border: 'none',
+                fontWeight: 700,
+                fontSize: '15px',
+                cursor: 'pointer',
+                transform: hoveredBtn === btn.path ? 'scale(1.02)' : 'scale(1)',
+                transition: 'background-color 0.18s ease, transform 0.18s ease',
+              }}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

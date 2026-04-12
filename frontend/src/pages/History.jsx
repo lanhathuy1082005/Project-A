@@ -22,7 +22,6 @@ export default function History() {
   const [showFeedback,       setShowFeedback]       = useState(false)
   const addToast = useToast()
 
-  console.log(data)
   if (!user) { navigate('/login'); return null }
 
   // ── Return handlers ────────────────────────────────────────────────────────
@@ -43,6 +42,8 @@ export default function History() {
       setPendingReservation(null)
       addToast('Item returned successfully', 'success')
       await refetch()
+      // Show feedback popup after a successful return
+      setShowFeedback(true)
     } catch (e) {
       setActionError(e.message)
     }
@@ -104,20 +105,7 @@ export default function History() {
         onPageChange={setPage}
       />
 
-      {user?.role === 'student' && (
-        <button
-          onClick={() => setShowFeedback(true)}
-          style={{
-            marginTop: '16px', width: '100%',
-            padding: '14px', borderRadius: '999px',
-            backgroundColor: '#dc2626', color: '#fff',
-            border: 'none', fontWeight: 700, fontSize: '15px', cursor: 'pointer',
-          }}
-        >
-          Send Feedback
-        </button>
-      )}
-
+      {/* QR Scanner modal for returns */}
       {pendingReservation && (
         <div
           onClick={cancelScan}
@@ -144,6 +132,7 @@ export default function History() {
         </div>
       )}
 
+      {/* Feedback popup — shown automatically after a successful return */}
       <FeedbackPopup open={showFeedback} onClose={() => setShowFeedback(false)} />
     </div>
   )

@@ -23,9 +23,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+certs/*
 
 __pycache__/
 services/face/reference_faces/*
 !services/face/reference_faces/.gitkeep
 
-certs/*

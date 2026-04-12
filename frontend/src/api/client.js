@@ -1,6 +1,5 @@
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
-
 const request = async (method, path, body) => {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -9,11 +8,15 @@ const request = async (method, path, body) => {
     body:        body ? JSON.stringify(body) : undefined,
   })
 
-  // Some responses are without body (204), need handling
+  // Some responses have no body (204)
   const text = await res.text()
   const data = text ? JSON.parse(text) : {}
 
-  if (!res.ok) throw new Error(data.message ?? `Request failed (${res.status})`)
+  if (!res.ok) {
+    const err = new Error(data.message ?? `Request failed (${res.status})`)
+    err.status = res.status   // preserve HTTP status so callers can branch on 500 vs others
+    throw err
+  }
   return data
 }
 

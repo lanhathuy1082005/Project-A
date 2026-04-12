@@ -21,7 +21,7 @@ export default function VerificationPanel() {
       setTotal(res.total)
     } catch (e) { addToast(e.message, 'error') }
     finally { setLoading(false) }
-  }, [page])
+  }, [page, addToast])
 
   useEffect(() => { fetchData() }, [fetchData])
 

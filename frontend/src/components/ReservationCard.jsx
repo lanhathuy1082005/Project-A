@@ -1,11 +1,11 @@
 import { useState, useContext } from 'react'
 import { AuthContext }          from '../context/AuthContext.jsx'
-import { formatDate }           from '../utils/format.js'
+import { formatDate, fmtUnitId, fmtRsvId } from '../utils/format.js'
 
 export default function ReservationCard({ reservation, onReturn }) {
   const { user } = useContext(AuthContext)
   const {
-    item_name, user_id,
+    id, item_id, item_unit_id, item_name, user_id,
     borrow_date, actual_return_date,
     course_name, lab_name,
   } = reservation
@@ -24,15 +24,27 @@ export default function ReservationCard({ reservation, onReturn }) {
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111' }}>{item_name}</h3>
+          {/* Item type name as primary title */}
+          <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: 700, color: '#111' }}>
+            {item_name || 'Unknown Item'}
+          </h3>
+          {/* Formatted IDs as secondary subtitle */}
+          <span style={{ fontSize: '11px', color: '#9ca3af', fontFamily: 'monospace' }}>
+            {fmtUnitId(item_id, item_unit_id)}
+          </span>
         </div>
-        <span style={{
-          fontSize: '12px', padding: '4px 12px', borderRadius: '999px', fontWeight: 600,
-          backgroundColor: isReturned ? '#dcfce7' : '#fef9c3',
-          color:           isReturned ? '#16a34a' : '#a16207',
-        }}>
-          {isReturned ? 'Returned' : 'Borrowing'}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+          <span style={{
+            fontSize: '12px', padding: '4px 12px', borderRadius: '999px', fontWeight: 600,
+            backgroundColor: isReturned ? '#dcfce7' : '#fef9c3',
+            color:           isReturned ? '#16a34a' : '#a16207',
+          }}>
+            {isReturned ? 'Returned' : 'Borrowing'}
+          </span>
+          <span style={{ fontSize: '10px', color: '#d1d5db', fontFamily: 'monospace' }}>
+            {fmtRsvId(id)}
+          </span>
+        </div>
       </div>
 
       <div style={{

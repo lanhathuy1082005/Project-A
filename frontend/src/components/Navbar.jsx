@@ -2,19 +2,19 @@ import { useState, useContext }               from 'react'
 import { NavLink, useNavigate, useLocation }  from 'react-router-dom'
 import { AuthContext }                        from '../context/AuthContext.jsx'
 import { logoutApi }                          from '../api/auth.api.js'
-import { TbBox, TbHistory, TbLogout, TbQrcode, TbLayoutDashboard, TbUsers, TbPackage, TbClipboardList, TbShieldCheck, TbFileText, TbChecklist, TbMessageCircle } from 'react-icons/tb'
+import { TbBox, TbHistory, TbLogout, TbQrcode, TbLayoutDashboard, TbUsers, TbPackage, TbClipboardList, TbChecklist, TbMessageCircle } from 'react-icons/tb'
 import { PiHouseFill }                        from 'react-icons/pi'
 import { FiChevronRight, FiChevronLeft, FiUser } from 'react-icons/fi'
 
-const EXPANDED = 230
+const EXPANDED  = 230
 const COLLAPSED = 72
 
 export default function Navbar() {
   const { user, setUser } = useContext(AuthContext)
   const navigate           = useNavigate()
   const location           = useLocation()
-  const [collapsed, setCollapsed] = useState(false)
-  const [hoveredItem, setHoveredItem] = useState(null)
+  const [collapsed, setCollapsed]         = useState(false)
+  const [hoveredItem, setHoveredItem]     = useState(null)
   const [hoveredLogout, setHoveredLogout] = useState(false)
   const [hoveredToggle, setHoveredToggle] = useState(false)
 
@@ -29,7 +29,9 @@ export default function Navbar() {
   const width = collapsed ? COLLAPSED : EXPANDED
 
   const navItems = [
-    { to: '/', label: 'Homepage', icon: <PiHouseFill size={20} />, end: true },
+    ...(user?.role !== 'admin'
+      ? [{ to: '/', label: 'Homepage', icon: <PiHouseFill size={20} />, end: true }]
+      : []),
     ...(user?.role === 'student'
       ? [{ to: '/items', label: 'QR Scan', icon: <TbQrcode size={20} />, end: false }]
       : []),
@@ -39,13 +41,12 @@ export default function Navbar() {
           { to: '/admin/classes',      label: 'Classes',      icon: <TbUsers size={20} />,           end: false },
           { to: '/admin/inventory',    label: 'Inventory',    icon: <TbPackage size={20} />,         end: false },
           { to: '/admin/reservations', label: 'Reservations', icon: <TbClipboardList size={20} />,  end: false },
-          { to: '/admin/verification', label: 'Verification', icon: <TbShieldCheck size={20} />,    end: false },
-          { to: '/admin/logs',         label: 'Logs',         icon: <TbFileText size={20} />,       end: false },
           { to: '/admin/checklist',    label: 'Checklist',    icon: <TbChecklist size={20} />,      end: false },
           { to: '/admin/feedback',     label: 'Feedback',     icon: <TbMessageCircle size={20} />,  end: false },
         ]
       : []),
-    ...(user
+    // History is for students only — admins use the Reservations page
+    ...(user?.role === 'student'
       ? [{ to: '/history', label: 'History', icon: <TbHistory size={20} />, end: false }]
       : []),
   ]
@@ -72,12 +73,12 @@ export default function Navbar() {
 
         {/* Logo / title */}
         <div style={{
-          display:       'flex',
-          alignItems:    'center',
-          gap:           '10px',
-          padding:       '0 16px',
-          marginBottom:  '48px',
-          cursor:        'pointer',
+          display:      'flex',
+          alignItems:   'center',
+          gap:          '10px',
+          padding:      '0 16px',
+          marginBottom: '48px',
+          cursor:       'pointer',
         }} onClick={() => navigate('/')}>
           <div style={{
             width:           '38px',
@@ -121,22 +122,20 @@ export default function Navbar() {
               onMouseEnter={() => setHoveredItem(item.to)}
               onMouseLeave={() => setHoveredItem(null)}
               style={({ isActive }) => ({
-                display:         'flex',
-                alignItems:      'center',
-                justifyContent:  collapsed ? 'center' : 'flex-start',
-                gap:             collapsed ? 0 : '10px',
-                padding:         collapsed ? '12px 0' : '12px 20px',
-                backgroundColor: isActive
-                  ? '#b91c1c'
-                  : hoveredItem === item.to ? '#b91c1c' : '#dc2626',
-                color:           '#fff',
-                textDecoration:  'none',
-                borderRadius:    '999px',
-                fontWeight:      700,
-                fontSize:        '14px',
-                whiteSpace:      'nowrap',
-                transform:       hoveredItem === item.to ? 'scale(1.03)' : 'scale(1)',
-                transition:      'background-color 0.18s ease, transform 0.18s ease',
+                display:        'flex',
+                alignItems:     'center',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                gap:            collapsed ? 0 : '10px',
+                padding:        collapsed ? '12px 0' : '12px 20px',
+                backgroundColor: isActive || hoveredItem === item.to ? '#b91c1c' : '#dc2626',
+                color:          '#fff',
+                textDecoration: 'none',
+                borderRadius:   '999px',
+                fontWeight:     700,
+                fontSize:       '14px',
+                whiteSpace:     'nowrap',
+                transform:      hoveredItem === item.to ? 'scale(1.03)' : 'scale(1)',
+                transition:     'background-color 0.18s ease, transform 0.18s ease',
               })}
             >
               {item.icon}
@@ -204,7 +203,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Collapse toggle button — floats on right edge */}
+      {/* Collapse toggle button */}
       <button
         onClick={() => setCollapsed(c => !c)}
         onMouseEnter={() => setHoveredToggle(true)}

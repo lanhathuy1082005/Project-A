@@ -34,7 +34,7 @@ export default function Logs() {
       setTotal(res.total)
     } catch (e) { addToast(e.message, 'error') }
     finally { setLoading(false) }
-  }, [page, filters])
+  }, [page, filters, addToast])
 
   useEffect(() => { fetchData() }, [fetchData])
 

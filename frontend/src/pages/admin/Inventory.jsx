@@ -5,15 +5,19 @@ import {
   getLabsApi,
 } from '../../api/admin.api.js'
 import { useToast } from '../../components/Toast.jsx'
+import { fmtItemId, fmtUnitId } from '../../utils/format.js'
 import Pagination from '../../components/Pagination.jsx'
 import Loading from '../../components/Loading.jsx'
 
-const STATUSES = ['Available', 'Borrowed', 'Maintenance']
+// Borrowed is set by the reservation system; admin can manually set the other three
+const STATUSES = ['Available', 'Needs Checking', 'Broken']
 
 const statusStyle = (status) => {
-  if (status === 'Available') return { backgroundColor: '#dcfce7', color: '#16a34a' }
-  if (status === 'Borrowed')  return { backgroundColor: '#fef9c3', color: '#a16207' }
-  return { backgroundColor: 'rgba(220,38,38,0.1)', color: '#dc2626' }
+  if (status === 'Available')     return { backgroundColor: '#dcfce7', color: '#16a34a' }
+  if (status === 'Borrowed')      return { backgroundColor: '#fef9c3', color: '#a16207' }
+  if (status === 'Needs Checking') return { backgroundColor: '#fef3c7', color: '#b45309' }
+  if (status === 'Broken')        return { backgroundColor: '#fee2e2', color: '#dc2626' }
+  return { backgroundColor: '#f3f4f6', color: '#6b7280' }
 }
 
 export default function Inventory() {
@@ -48,7 +52,7 @@ export default function Inventory() {
       setTotal(res.total)
     } catch (e) { addToast(e.message, 'error') }
     finally { setLoading(false) }
-  }, [page, statusFilter])
+  }, [page, statusFilter, addToast])
 
   useEffect(() => { fetchUnits() }, [fetchUnits])
 
@@ -92,7 +96,8 @@ export default function Inventory() {
   const handleSaveUnit = async () => {
     try {
       if (editUnit) {
-        await updateItemUnitApi(editUnit.id, unitForm)
+        const { status: _status, ...unitData } = unitForm
+        await updateItemUnitApi(editUnit.id, unitData)
         addToast('Item unit updated', 'success')
       } else {
         await addItemUnitApi(unitForm)
@@ -142,7 +147,7 @@ export default function Inventory() {
           <tbody>
             {items.map(i => (
               <tr key={i.id}>
-                <td style={tdStyle}><span style={idBadge}>#{i.id}</span></td>
+                <td style={tdStyle}><span style={idBadge}>{fmtItemId(i.id)}</span></td>
                 <td style={{ ...tdStyle, fontWeight: 600, color: '#111' }}>{i.name}</td>
                 <td style={tdStyle}>
                   <div style={{ display: 'flex', gap: '6px' }}>
@@ -181,7 +186,7 @@ export default function Inventory() {
           <tbody>
             {units.map(u => (
               <tr key={u.id}>
-                <td style={tdStyle}><span style={idBadge}>#{u.id}</span></td>
+                <td style={tdStyle}><span style={idBadge}>{fmtUnitId(u.item_id, u.id)}</span></td>
                 <td style={{ ...tdStyle, fontWeight: 600, color: '#111' }}>{u.item_name}</td>
                 <td style={tdStyle}>{u.lab_name || '—'}</td>
                 <td style={tdStyle}>
@@ -241,14 +246,7 @@ export default function Inventory() {
                   {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </div>
-              {editUnit && (
-                <div>
-                  <label style={labelStyle}>Status</label>
-                  <select value={unitForm.status} onChange={e => setUnitForm(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              )}
+
             </div>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button onClick={() => setShowUnitForm(false)} style={outlineBtn}>Cancel</button>

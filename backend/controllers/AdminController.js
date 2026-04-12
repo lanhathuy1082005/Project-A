@@ -143,12 +143,14 @@ export const handleDeleteItemUnit = async (req, res, next) => {
 // ── Borrow & Return Management ────────────────────────────────────────────────
 export const handleGetAllReservations = async (req, res, next) => {
   try {
-    const { status, user_id, class_id } = req.query;
+    const { status, user_id, class_id, date_from, date_to } = req.query;
     const result = await getAllReservations({
       ...req.pagination,
-      status: status || null,
-      userId: user_id || null,
-      classId: class_id ? parseInt(class_id) : null,
+      status:   status    || null,
+      userId:   user_id   || null,
+      classId:  class_id  ? parseInt(class_id) : null,
+      dateFrom: date_from || null,
+      dateTo:   date_to   || null,
     });
     return res.json(result);
   } catch (err) { next(err); }
@@ -192,9 +194,9 @@ export const handleReportIssue = async (req, res, next) => {
     // Update item_unit status to Maintenance
     const reservation = await getReservationById(id);
     if (reservation) {
-      await updateItemUnit(reservation.item_unit_id, null, 'Maintenance');
+      await updateItemUnit(reservation.item_unit_id, null, 'Broken');
     }
-    return res.json({ message: 'Issue reported, item sent to maintenance', data: result });
+    return res.json({ message: 'Issue reported, item marked as Broken', data: result });
   } catch (err) { next(err); }
 };
 

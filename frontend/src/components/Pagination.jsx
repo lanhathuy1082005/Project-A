@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
 export default function Pagination({ page, limit, total, onPageChange }) {
+  const [hoveredPrev, setHoveredPrev] = useState(false)
+  const [hoveredNext, setHoveredNext] = useState(false)
   const totalPages = Math.ceil(total / limit)
   if (totalPages <= 1) return null
 
-  const [hoveredPrev, setHoveredPrev] = useState(false)
-  const [hoveredNext, setHoveredNext] = useState(false)
+
 
   return (
     <div style={{

@@ -52,12 +52,14 @@ export const updateItemUnitApi = (id, data) =>
 export const deleteItemUnitApi = (id) =>
   client.delete(`/api/admin/item-units/${id}`)
 
-// Reservations (admin view with filters)
+// Reservations (admin view with filters — merged page)
 export const getAdminReservationsApi = (page, limit, filters = {}) => {
   let url = withPagination('/api/admin/reservations', page, limit)
-  if (filters.status) url += `&status=${filters.status}`
-  if (filters.user_id) url += `&user_id=${filters.user_id}`
-  if (filters.class_id) url += `&class_id=${filters.class_id}`
+  if (filters.status)    url += `&status=${filters.status}`
+  if (filters.user_id)   url += `&user_id=${filters.user_id}`
+  if (filters.class_id)  url += `&class_id=${filters.class_id}`
+  if (filters.date_from) url += `&date_from=${filters.date_from}`
+  if (filters.date_to)   url += `&date_to=${filters.date_to}`
   return client.get(url)
 }
 
