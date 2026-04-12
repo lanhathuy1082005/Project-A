@@ -40,8 +40,6 @@ export default function Dashboard() {
         marginBottom: '40px',
       }}>
         <StatCard label="Active Borrows"     value={data.active_borrows}           onClick={() => navigate('/admin/reservations')} />
-        <StatCard label="Pending Returns"    value={data.pending_returns}           onClick={() => navigate('/admin/verification')} />
-        <StatCard label="Borrowed Devices"   value={data.borrowed_devices} />
         <StatCard label="Maintenance"        value={data.maintenance_devices} />
         <StatCard label="Available Devices"  value={data.available_devices} />
         <StatCard label="Today's Sessions"   value={data.today_sessions?.length ?? 0} />

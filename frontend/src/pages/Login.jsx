@@ -56,8 +56,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      console.log(form)
-      const data = await loginApi(form)
+      const data = await loginApi({ ...form, id: form.id.trim(), password: form.password.trim() })
       setUser(data.user)
       if (isFaceLogin) {
         setShowFaceLoginSuccessPopup(true)

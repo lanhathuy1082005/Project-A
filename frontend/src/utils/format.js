@@ -21,3 +21,13 @@ const DAY_MAP = {
   thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday',
 }
 export const formatDay = (day) => DAY_MAP[day?.toLowerCase()] ?? day
+
+/**
+ * Application-level ID formatters
+ * Numbers stay as-is in the database; these are display-only prefixed forms.
+ */
+const pad = (n) => String(n).padStart(3, '0')
+
+export const fmtItemId = (n)            => `ITM-${pad(n)}`                          // item type:   ITM-001
+export const fmtUnitId = (itemId, unitId) => `${fmtItemId(itemId)}-UNT-${pad(unitId)}` // item unit:   ITM-001-UNT-001
+export const fmtRsvId  = (n)            => `RSV-${pad(n)}`                          // reservation: RSV-001

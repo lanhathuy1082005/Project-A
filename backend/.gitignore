@@ -22,9 +22,19 @@ dist-ssr
 .ntvs
 *.njsproj
 *.sln
+<<<<<<< HEAD
 .sw?
 certs/
+=======
+*.sw?
+certs/*
+>>>>>>> d38d5d9c1c7d1f901c0193b03876f6306bc06f5a
 
 pycache/
 services/face/reference_faces/*
+<<<<<<< HEAD
 !services/face/reference_faces/.gitkeep
+=======
+!services/face/reference_faces/.gitkeep
+
+>>>>>>> d38d5d9c1c7d1f901c0193b03876f6306bc06f5a

@@ -18,19 +18,17 @@ export const getUserReservations = async (user_id, { limit, offset }) => {
   return { data: rows.rows, total: parseInt(count.rows[0].count) };
 };
 
-export const getAllReservations = async ({ limit, offset, status, userId, classId }) => {
+export const getAllReservations = async ({ limit, offset, status, userId, classId, dateFrom, dateTo }) => {
   const conditions = [];
   const params = [];
   let idx = 1;
 
-  if (status === 'borrowed') {
-    conditions.push('actual_return_date IS NULL AND approved IS NULL');
-  } else if (status === 'return_submitted') {
-    conditions.push('actual_return_date IS NOT NULL AND approved IS NULL');
-  } else if (status === 'verified') {
-    conditions.push('approved = TRUE');
-  } else if (status === 'maintenance') {
-    conditions.push('approved = FALSE');
+  if (status === 'not_returned') {
+    conditions.push('actual_return_date IS NULL');
+  } else if (status === 'overdue') {
+    conditions.push("actual_return_date IS NULL AND DATE(borrow_date) < CURRENT_DATE");
+  } else if (status === 'returned') {
+    conditions.push('actual_return_date IS NOT NULL');
   }
 
   if (userId) {
@@ -39,9 +37,18 @@ export const getAllReservations = async ({ limit, offset, status, userId, classI
   }
 
   if (classId) {
-    // classId maps to timetable_id via the reservation
     conditions.push(`id IN (SELECT r2.id FROM reservations r2 WHERE r2.timetable_id = $${idx++})`);
     params.push(classId);
+  }
+
+  if (dateFrom) {
+    conditions.push(`borrow_date >= $${idx++}`);
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    conditions.push(`borrow_date <= $${idx++}`);
+    params.push(dateTo);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
