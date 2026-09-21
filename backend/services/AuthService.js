@@ -1,14 +1,11 @@
 import bcrypt from 'bcrypt';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
 import { getUserByUserId, createUser, createAttendanceRecord, getValidTimetableForUser } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { api } from '../utils/apiWrapper.js';
-
-const __dirname_curr = path.dirname(fileURLToPath(import.meta.url));
-const FACES_DIR = path.join(__dirname_curr, 'face', 'reference_faces');
 
 const SALT_ROUNDS = 10;
 
@@ -20,8 +17,6 @@ const mockGetUserTruthByUserId = async (id) => {
   ];
   return users_truth.find((u) => u.id === id);
 };
-
-const facePath = (id) => path.join(FACES_DIR, `${id}.jpg`);
 
 export const loginUserService = async (id, password) => {
   let user = await getUserByUserId(id);
@@ -40,13 +35,15 @@ export const loginUserService = async (id, password) => {
 };
 
 // ── In-memory token store ────────────────────────────────────────────────────
+// Captured images are staged locally as short-lived temp files (never read by
+// another container) until they're either forwarded to face-service for
+// registration (which stores them in MinIO) or sent as base64 for verification.
 const faceImages = new Map();
 
 const saveImage = async (dataUrl) => {
   const base64Data = dataUrl.split(',')[1];
   const buffer = Buffer.from(base64Data, 'base64');
-  const filename = `${crypto.randomUUID()}.jpg`;
-  const filepath = path.join(FACES_DIR, filename);
+  const filepath = path.join(os.tmpdir(), `face-${crypto.randomUUID()}.jpg`);
   await fs.promises.writeFile(filepath, buffer);
   return filepath;
 };
@@ -68,7 +65,8 @@ const cleanup = async () => {
 };
 
 // ── Pre-scan student ID check ────────────────────────────────────────────────
-// Validates the student ID exists (DB or truth list), then checks face file state.
+// Validates the student ID exists (DB or truth list), then checks with
+// face-service whether a reference face is already registered in MinIO.
 // Returns the resolved student id so the controller can echo it back to the UI.
 export const checkStudentForFaceScan = async (id, mode) => {
   // Validate the student exists in our system
@@ -78,8 +76,8 @@ export const checkStudentForFaceScan = async (id, mode) => {
     throw new AppError('Student ID not found', 404);
   }
 
-  const resolvedId = dbUser?.id ?? truth.id;
-  const faceExists = fs.existsSync(facePath(resolvedId));
+  const resolvedId = dbUser.id;
+  const { exists: faceExists } = await api.get(`/face/exists/${encodeURIComponent(resolvedId)}`);
 
   if (mode === 'face-registration' && faceExists) {
     throw new AppError('Face already registered for this account', 409);
@@ -105,21 +103,23 @@ export const captureFace = async (dataUrl) => {
   return token;
 };
 
-// ── Registration: rename temp image to {id}.jpg ──────────────────────────────
+// ── Registration: forward temp image to face-service, which stores it in MinIO ──
 export const consumeTokenForFaceRegistration = async (id, token) => {
   await cleanup();
 
   const entry = faceImages.get(token);
   if (!entry) throw new AppError('Invalid or expired face token', 400);
 
-  const dest = facePath(id);
-
-  // Remove any existing face file so rename succeeds on all platforms
-  try { await fs.promises.unlink(dest); } catch { /* didn't exist, fine */ }
-
   console.log(`[FaceRegistration] Saving face for user=${id}`);
-  await fs.promises.rename(entry.imagePath, dest);
-  faceImages.delete(token);
+  const buf = await fs.promises.readFile(entry.imagePath);
+  try {
+    await api.post('/face/register', { user_id: id, image_b64: buf.toString('base64') });
+  } catch {
+    throw new AppError('Face registration service unavailable', 500);
+  } finally {
+    try { await fs.promises.unlink(entry.imagePath); } catch { /* already gone */ }
+    faceImages.delete(token);
+  }
   console.log(`[FaceRegistration] Done`);
 };
 

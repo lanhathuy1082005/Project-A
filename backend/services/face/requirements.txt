@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+python-multipart
+python-dotenv
+minio
+deepface
+tf-keras
+opencv-python-headless
+retina-face
+mtcnn
