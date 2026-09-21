@@ -1,6 +1,6 @@
-import { pool } from '../config/db.js';
+import { db } from '../utils/dbClient.js';
 
 export const getAllCourses = async () => {
-  const { rows } = await pool.query('SELECT * FROM courses ORDER BY id');
-  return rows;
+  const { data } = await db.get('/courses');
+  return data;
 };
