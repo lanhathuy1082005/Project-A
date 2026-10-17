@@ -17,7 +17,13 @@ const request = async (method, path, body) => {
   // callers check `if (!result)` rather than catching an exception.
   if (res.status === 404) return null
 
-  if (!res.ok) throw new AppError(data?.detail ?? `DB service request failed (${res.status})`, res.status)
+  if (!res.ok) {
+    // FastAPI validation errors (422) carry `detail` as a list of { loc, msg }.
+    const detail = Array.isArray(data?.detail)
+      ? data.detail.map(e => `${e.loc?.at(-1)}: ${e.msg}`).join('; ')
+      : data?.detail
+    throw new AppError(detail ?? `DB service request failed (${res.status})`, res.status)
+  }
   return data
 }
 

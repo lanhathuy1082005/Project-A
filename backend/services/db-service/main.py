@@ -8,6 +8,7 @@ Run: uvicorn main:app --host 0.0.0.0 --port 8001
 
 import os
 from contextlib import asynccontextmanager
+from datetime import time
 from typing import Optional
 
 import asyncpg
@@ -90,8 +91,8 @@ class CreateFeedback(BaseModel):
 class UpsertClass(BaseModel):
     course_id: int
     day_of_week: int
-    start_time: str
-    end_time: str
+    start_time: time
+    end_time: time
 
 
 class BorrowRequest(BaseModel):
