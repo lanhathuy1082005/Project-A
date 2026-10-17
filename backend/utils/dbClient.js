@@ -10,7 +10,8 @@ const request = async (method, path, body) => {
   })
 
   const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  let data = null
+  try { data = text ? JSON.parse(text) : null } catch { /* non-JSON body, e.g. a bare 500 */ }
 
   // Not-found is a normal outcome for lookups/mutations in this codebase —
   // callers check `if (!result)` rather than catching an exception.

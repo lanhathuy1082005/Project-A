@@ -11,7 +11,8 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 DB_USER = os.getenv("DB_USER", "postgres")
@@ -33,6 +34,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="DB Service", version="1.0.0", lifespan=lifespan)
+
+
+# Deleting a row that other rows still reference (e.g. an item whose units have
+# reservations) is a client conflict, not a server crash — report it as 409.
+@app.exception_handler(asyncpg.exceptions.ForeignKeyViolationError)
+@app.exception_handler(asyncpg.exceptions.RestrictViolationError)
+async def fk_violation_handler(request: Request, exc: asyncpg.PostgresError):
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Cannot complete this action because other records still reference it"},
+    )
 
 
 def rows_to_list(records):
