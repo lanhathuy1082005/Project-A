@@ -27,8 +27,8 @@ const displayStatus = (r) => {
   return { label: 'Borrowed', bg: '#fef3c7', color: '#b45309' }
 }
 
-// Show verify/report only when returned but not yet processed (approved IS NULL)
-const needsVerification = (r) => !!r.actual_return_date && r.approved === null
+// Show verify/report only when returned but not yet processed
+const needsVerification = (r) => !!r.actual_return_date && r.approval_status === 'pending'
 
 export default function Reservations() {
   const addToast = useToast()

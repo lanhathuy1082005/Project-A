@@ -6,8 +6,8 @@ import Pagination from '../../components/Pagination.jsx'
 import Loading from '../../components/Loading.jsx'
 
 const statusLabel = (r) => {
-  if (r.approved === true) return 'Verified'
-  if (r.approved === false) return 'Maintenance'
+  if (r.approval_status === 'approved') return 'Verified'
+  if (r.approval_status === 'issue_reported') return 'Maintenance'
   if (r.actual_return_date) return 'Return Submitted'
   return 'Borrowed'
 }
@@ -111,8 +111,8 @@ export default function Logs() {
 }
 
 const statusStyle = (r) => {
-  if (r.approved === true) return { backgroundColor: '#d1fae5', color: '#047857' }
-  if (r.approved === false) return { backgroundColor: '#fee2e2', color: '#991b1b' }
+  if (r.approval_status === 'approved') return { backgroundColor: '#d1fae5', color: '#047857' }
+  if (r.approval_status === 'issue_reported') return { backgroundColor: '#fee2e2', color: '#991b1b' }
   if (r.actual_return_date) return { backgroundColor: '#dbeafe', color: '#1e40af' }
   return { backgroundColor: '#fef3c7', color: '#b45309' }
 }

@@ -18,6 +18,7 @@ cd Project-A
 docker compose up --build
 ```
 
+'
 Lần build đầu tiên sẽ mất khá lâu (face-service cài TensorFlow/DeepFace, có thể vài trăm MB tải về). Các lần sau chỉ cần:
 
 ```bash
@@ -34,7 +35,10 @@ docker compose up
 | Face service | http://localhost:8000 | FastAPI, health check tại `/health` |
 | PostgreSQL | localhost:5432 | user `postgres` / pass `postgres` / db `project_a` |
 
-Database sẽ tự động được khởi tạo từ `database/project_a.dump` khi container Postgres chạy lần đầu (chỉ chạy khi volume `pgdata` còn trống).
+Schema của database được tự động dựng từ migration (`backend/services/db-service/migrations/`, chạy bằng `yoyo-migrations` ngay khi container `db-service` khởi động) — Postgres khởi động hoàn toàn trống, không cần file dump. Muốn có sẵn dữ liệu mẫu (courses/labs/items/timetable/users demo) để dev/test, nạp thêm:
+```bash
+docker compose exec -T postgres psql -U postgres -d project_a < database/seed/dev_seed.sql
+```
 
 ### Tài khoản test có sẵn
 
@@ -44,13 +48,13 @@ Database sẽ tự động được khởi tạo từ `database/project_a.dump` 
 | `user2` | student |
 | `admin` | admin |
 
-> Mật khẩu đã được hash sẵn trong dump — nếu cần đăng nhập, reset mật khẩu qua `docker compose exec postgres psql -U postgres -d project_a` rồi `UPDATE users SET password_hash = '<bcrypt hash>'`.
+> Tài khoản test trên chỉ có nếu đã nạp `database/seed/dev_seed.sql` (xem trên). Mật khẩu đã hash sẵn trong file đó — nếu cần đăng nhập, reset mật khẩu qua `docker compose exec postgres psql -U postgres -d project_a` rồi `UPDATE users SET password_hash = '<bcrypt hash>'`.
 
 ### Dừng / dọn dẹp
 
 ```bash
 docker compose down          # dừng, giữ lại data (volume pgdata, face_data)
-docker compose down -v       # dừng và xóa luôn data (reset về dump gốc)
+docker compose down -v       # dừng và xóa luôn data (lần sau lên lại sẽ là DB trống, cần nạp lại seed nếu muốn có dữ liệu mẫu)
 ```
 
 ### Tùy chỉnh cấu hình
@@ -64,9 +68,10 @@ Biến môi trường cho từng service được khai báo trong `docker-compos
 Cần cài sẵn: Node.js, PostgreSQL 18, Python 3.10+ (nếu chạy face service).
 
 ### 1. Database
-Tạo database `project_a` rồi restore dump:
+Tạo database `project_a` trống — schema sẽ được `db-service` tự dựng từ migration ở bước
+2 (không cần restore gì ở đây). Muốn có dữ liệu mẫu, nạp sau khi `db-service` đã chạy:
 ```bash
-pg_restore -U postgres -d project_a --no-owner --no-privileges database/project_a.dump
+psql -U postgres -d project_a < database/seed/dev_seed.sql
 ```
 
 ### 2. DB Service

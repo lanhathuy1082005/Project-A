@@ -111,7 +111,7 @@ async def create_user(body: CreateUser):
         row = await conn.fetchrow(
             """WITH new_user AS (
                  INSERT INTO users (id, password_hash, role_id)
-                 VALUES ($1, $2, 1)
+                 VALUES ($1, $2, (SELECT id FROM roles WHERE name = 'student'))
                  RETURNING id, role_id
                )
                SELECT nu.id, r.name AS role
@@ -126,9 +126,20 @@ async def create_attendance_record(body: CreateAttendance):
     async with app.state.pool.acquire() as conn:
         row = await conn.fetchrow(
             """INSERT INTO attendance (user_id, timetable_id)
-               VALUES ($1, $2) RETURNING *""",
+               VALUES ($1, $2)
+               ON CONFLICT (user_id, timetable_id, session_date) DO NOTHING
+               RETURNING *""",
             body.user_id, body.timetable_id,
         )
+        if not row:
+            # Already checked in for this class today — return the existing record
+            # instead of surfacing a unique-violation error for a harmless re-scan.
+            row = await conn.fetchrow(
+                """SELECT * FROM attendance
+                   WHERE user_id = $1 AND timetable_id = $2
+                     AND session_date = (now() AT TIME ZONE 'UTC')::date""",
+                body.user_id, body.timetable_id,
+            )
     return row_to_dict(row)
 
 
@@ -428,7 +439,7 @@ def _reservation_filters(conditions, params, idx, status, user_id, class_id, dat
         params.append(user_id)
         idx += 1
     if class_id:
-        conditions.append(f"id IN (SELECT r2.id FROM reservations r2 WHERE r2.timetable_id = ${idx})")
+        conditions.append(f"timetable_id = ${idx}")
         params.append(class_id)
         idx += 1
     if date_from:
@@ -486,13 +497,13 @@ async def get_pending_returns(limit: int = Query(20), offset: int = Query(0)):
     async with app.state.pool.acquire() as conn:
         rows = await conn.fetch(
             """SELECT * FROM v_reservations
-               WHERE actual_return_date IS NOT NULL AND approved IS NULL
+               WHERE actual_return_date IS NOT NULL AND approval_status = 'pending'
                ORDER BY actual_return_date ASC
                LIMIT $1 OFFSET $2""",
             limit, offset,
         )
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM v_reservations WHERE actual_return_date IS NOT NULL AND approved IS NULL"
+            "SELECT COUNT(*) FROM v_reservations WHERE actual_return_date IS NOT NULL AND approval_status = 'pending'"
         )
     return {"data": rows_to_list(rows), "total": total}
 
@@ -525,7 +536,7 @@ async def get_dashboard_stats():
         row = await conn.fetchrow(
             """SELECT
                  COUNT(*) FILTER (WHERE actual_return_date IS NULL) AS active_borrows,
-                 COUNT(*) FILTER (WHERE actual_return_date IS NOT NULL AND approved IS NULL) AS pending_returns
+                 COUNT(*) FILTER (WHERE actual_return_date IS NOT NULL AND approval_status = 'pending') AS pending_returns
                FROM reservations"""
         )
     return row_to_dict(row)
@@ -619,8 +630,8 @@ async def return_item(reservation_id: int, body: ReturnRequest):
 async def approve_return(reservation_id: int):
     async with app.state.pool.acquire() as conn:
         row = await conn.fetchrow(
-            """UPDATE reservations SET approved = TRUE
-               WHERE id = $1 AND approved IS NULL
+            """UPDATE reservations SET approval_status = 'approved'
+               WHERE id = $1 AND approval_status = 'pending'
                RETURNING *""",
             reservation_id,
         )
@@ -633,8 +644,8 @@ async def approve_return(reservation_id: int):
 async def report_issue(reservation_id: int):
     async with app.state.pool.acquire() as conn:
         row = await conn.fetchrow(
-            """UPDATE reservations SET approved = FALSE
-               WHERE id = $1 AND approved IS NULL
+            """UPDATE reservations SET approval_status = 'issue_reported'
+               WHERE id = $1 AND approval_status = 'pending'
                RETURNING *""",
             reservation_id,
         )

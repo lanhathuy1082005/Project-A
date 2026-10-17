@@ -14,8 +14,8 @@ const STATUS_OPTIONS = [
 ]
 
 const statusColor = (r) => {
-  if (r.approved === true) return { bg: '#d1fae5', color: '#047857', label: 'Verified' }
-  if (r.approved === false) return { bg: '#fee2e2', color: '#991b1b', label: 'Maintenance' }
+  if (r.approval_status === 'approved') return { bg: '#d1fae5', color: '#047857', label: 'Verified' }
+  if (r.approval_status === 'issue_reported') return { bg: '#fee2e2', color: '#991b1b', label: 'Maintenance' }
   if (r.actual_return_date) return { bg: '#dbeafe', color: '#1e40af', label: 'Return Submitted' }
   return { bg: '#fef3c7', color: '#b45309', label: 'Borrowed' }
 }
@@ -137,7 +137,7 @@ export default function BorrowManagement() {
               <div><span style={{ color: '#6b7280' }}>Lab:</span> {detail.lab_name}</div>
               <div><span style={{ color: '#6b7280' }}>Borrow Date:</span> {formatDate(detail.borrow_date)}</div>
               <div><span style={{ color: '#6b7280' }}>Return Date:</span> {formatDate(detail.actual_return_date)}</div>
-              <div><span style={{ color: '#6b7280' }}>Status:</span> <strong style={{ color: '#111' }}>{detail.approved === true ? '✓ Verified' : detail.approved === false ? '⚠ Maintenance' : '○ Pending'}</strong></div>
+              <div><span style={{ color: '#6b7280' }}>Status:</span> <strong style={{ color: '#111' }}>{detail.approval_status === 'approved' ? '✓ Verified' : detail.approval_status === 'issue_reported' ? '⚠ Maintenance' : '○ Pending'}</strong></div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
               <button onClick={() => setDetail(null)} style={outlineBtn}>Close</button>

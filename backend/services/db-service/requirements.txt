@@ -2,3 +2,5 @@ fastapi
 uvicorn
 asyncpg
 pydantic
+yoyo-migrations
+psycopg2-binary
