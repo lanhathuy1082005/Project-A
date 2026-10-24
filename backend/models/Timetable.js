@@ -16,6 +16,20 @@ export const getAllClasses = async ({ limit, offset }) => {
   return { data: rows.rows, total: parseInt(count.rows[0].count) };
 };
 
+export const getMyTimetable = async (userId) => {
+  const { rows } = await pool.query(
+    `SELECT t.id, t.day_of_week, t.start_time, t.end_time,
+            c.name AS course_name
+     FROM timetable t
+     JOIN courses c ON c.id = t.course_id
+     JOIN timetable_user tu ON tu.timetable_id = t.id
+     WHERE tu.user_id = $1
+     ORDER BY t.day_of_week, t.start_time`,
+    [userId]
+  );
+  return rows;
+};
+
 export const getClassStudents = async (timetableId) => {
   const { rows } = await pool.query(
     `SELECT u.id AS user_id, u.created_at

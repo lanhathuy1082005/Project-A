@@ -10,6 +10,7 @@ import { apiLimiter }        from './middleware/rateLimiter.js';
 import { errorHandler }      from './middleware/errorHandler.js';
 import authRoutes            from './routes/auth.routes.js';
 import reservationRoutes     from './routes/reservation.routes.js';
+import timetableRoutes       from './routes/timetable.routes.js';
 import feedbackRoutes        from './routes/feedback.routes.js';
 import adminRoutes           from './routes/admin.routes.js';
 
@@ -17,7 +18,7 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:8081')
   .split(',')
   .map(o => o.trim());
 
@@ -42,6 +43,7 @@ app.use('/api', apiLimiter);
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',         authRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/timetable',    timetableRoutes);
 app.use('/api/feedback',     feedbackRoutes);
 app.use('/api/admin',        adminRoutes);
 
