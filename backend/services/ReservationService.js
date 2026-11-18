@@ -1,285 +1,106 @@
-import { pool }                                          from '../config/db.js';
-import { createReservation, markReturned,
-         getUserReservations, getAllReservations }        from '../models/Reservation.js';
-import { AppError }                                      from '../utils/AppError.js';
+import { pool }                                   from '../config/db.js';
+import { createReservation, getUserReservations,
+         getAllReservations }                     from '../models/Reservation.js';
+import { AppError }                               from '../utils/AppError.js';
+import { parseQrToken }                           from '../utils/qrParser.js';
+import { callKitModel, callSingleModel }          from './scanModelClient.js';
+import { evaluateSingle, isKitBorrowable,
+         kitReturnFlag, singleReturnFlag }        from './scanRules.js';
 
-const SCAN_STATUSES = new Set(['success', 'missing', 'wrong', 'unsure']);
-const CONFIRMABLE_SCAN_STATUSES = new Set(['success', 'missing']);
-const SINGLE_ITEM_CLASSES = new Set([
-  'Arduino-Nano-33-BLE-Rev2',
-  'Arduino-Nano-Every',
-  'Arduino-Nano-Motor-Carrier',
-  'Arduino-Nano-R4-Headers',
-  'Arduino-UNO-R3',
-  'Arduino-UNO-R4-WiFi',
-]);
-const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
-const DEFAULT_SCAN_MODEL_URL = 'http://127.0.0.1:8000';
-
-// ── In-process lock (single instance). Use Redis if scaling to multiple instances ───
-const activeLocks = new Set();
-
-const withLock = async (key, fn) => {
-  if (activeLocks.has(key)) throw new AppError('Item is currently being processed, please try again later', 409);
-  activeLocks.add(key);
-  try   { return await fn(); }
-  finally { activeLocks.delete(key); }
+const SCAN_TTL = "INTERVAL '15 minutes'";
+const BORROWABLE_STATUSES = ['Available', 'Needs Checking'];
+const singleThreshold = () => {
+  const value = Number(process.env.SINGLE_SCAN_CONFIDENCE_THRESHOLD ?? 0.8);
+  if (!(value >= 0 && value <= 1))
+    throw new AppError('SINGLE_SCAN_CONFIDENCE_THRESHOLD must be between 0 and 1', 500);
+  return value;
 };
+const labTimeZone = () => process.env.LAB_TIMEZONE || 'Asia/Bangkok';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const validateQrMatch = (scanned, expected) => {
-  if (scanned && scanned !== expected)
-    throw new AppError('QR code does not match', 400);
+const requireToken = (qr_text) => {
+  const token = parseQrToken(qr_text);
+  if (!token) throw new AppError('This is not a lab item QR code', 400);
+  return token;
 };
 
-const decodeJpeg = (imageB64) => {
-  if (typeof imageB64 !== 'string' || imageB64.length === 0)
-    throw new AppError('A scan image is required', 400);
-  const image = Buffer.from(imageB64, 'base64');
-  if (image.toString('base64') !== imageB64)
-    throw new AppError('Scan image must contain valid base64', 400);
-  if (!image.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
-    throw new AppError('Scan image must be a JPEG image', 400);
-  if (image.length > MAX_IMAGE_BYTES)
-    throw new AppError('Scan image exceeds the maximum size', 413);
-  return image;
-};
-
-const getPhysicalItem = async (itemUnitId) => {
-  const id = Number(itemUnitId);
+const positiveId = (value, label) => {
+  const id = Number(value);
   if (!Number.isSafeInteger(id) || id < 1)
-    throw new AppError('item_unit_id must be a positive integer', 400);
-  const { rows } = await pool.query(
-    `SELECT iu.id AS item_unit_id, i.id AS item_id, i.name AS item_name,
-            i.kit_type_id, iu.status
-     FROM item_units iu
-     JOIN items i ON i.id = iu.item_id
-     WHERE iu.id = $1`,
-    [id],
+    throw new AppError(`${label} must be a positive integer`, 400);
+  return id;
+};
+
+const optionalId = (value, label) =>
+  value === undefined || value === null ? null : positiveId(value, label);
+
+const UNIT_COLUMNS = `
+  iu.id AS item_unit_id, iu.status, iu.qr_token,
+  i.id AS item_id, i.name AS item_name, i.kit_type_id, kt.slot_count`;
+const UNIT_FROM = `
+  FROM item_units iu
+  JOIN items i ON i.id = iu.item_id
+  LEFT JOIN kit_types kt ON kt.id = i.kit_type_id`;
+
+const findUnitByToken = async (db, token, { lock = false } = {}) => {
+  const { rows } = await db.query(
+    `SELECT ${UNIT_COLUMNS} ${UNIT_FROM} WHERE iu.qr_token = $1 ${lock ? 'FOR UPDATE OF iu' : ''}`,
+    [token],
   );
-  if (!rows[0]) throw new AppError('Item unit not found', 404);
+  if (!rows[0]) throw new AppError('This QR code is not registered to any item', 404);
   return rows[0];
 };
 
-const callKitModel = async (kitTypeId, imageB64) => {
-  const { rows } = await pool.query(
-    'SELECT slot_count FROM kit_types WHERE id = $1',
-    [kitTypeId],
-  );
-  const expectedSlots = rows[0]?.slot_count;
-  if (!Number.isSafeInteger(expectedSlots) || expectedSlots < 1)
+const assertKitConfigured = (unit) => {
+  if (unit.kit_type_id !== null && !(unit.slot_count > 0))
     throw new AppError('This kit type has no valid slot count', 409);
-
-  const image = decodeJpeg(imageB64);
-  let response;
-  try {
-    const modelUrl = (
-      process.env.SCAN_MODEL_URL
-      || process.env.FACE_API_URL
-      || DEFAULT_SCAN_MODEL_URL
-    ).replace(/\/+$/, '');
-    response = await fetch(`${modelUrl}/scan-frames/kit`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_b64: image.toString('base64'),
-        expected_slots: expectedSlots,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch (error) {
-    throw new AppError(
-      error?.name === 'TimeoutError'
-        ? 'Kit scan model timed out'
-        : 'Kit scan model is unavailable',
-      503,
-    );
-  }
-
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new AppError('Kit scan model returned an invalid response', 502);
-  }
-  if (!response.ok) throw new AppError('Kit scan model rejected the image', 502);
-  if (
-    !result
-    || !SCAN_STATUSES.has(result.status)
-    || !Number.isSafeInteger(result.expected_slots)
-    || result.expected_slots !== expectedSlots
-    || !Number.isSafeInteger(result.empty_count)
-    || result.empty_count < 0
-    || !Number.isSafeInteger(result.sensor_count)
-    || result.sensor_count < 0
-    || !Number.isSafeInteger(result.two_sensor_count)
-    || result.two_sensor_count < 0
-    || !Number.isFinite(result.confidence)
-    || result.confidence < 0
-    || result.confidence > 1
-    || !Number.isFinite(result.confidence_threshold)
-    || result.confidence_threshold < 0
-    || result.confidence_threshold > 1
-    || typeof result.model_version !== 'string'
-  ) {
-    throw new AppError('Kit scan model returned invalid results', 502);
-  }
-  const countsMatch =
-    result.empty_count + result.sensor_count + result.two_sensor_count === expectedSlots;
-  const expectedStatus = result.confidence < result.confidence_threshold
-    ? 'unsure'
-    : !countsMatch
-      ? 'wrong'
-      : result.empty_count > 0
-        ? 'missing'
-        : 'success';
-  if (result.status !== expectedStatus) {
-    throw new AppError('Kit scan model returned inconsistent results', 502);
-  }
-  return result;
 };
 
-const normalizeItemClass = (name) =>
-  name.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-const callSingleModel = async (imageB64) => {
-  const image = decodeJpeg(imageB64);
-  let response;
-  try {
-    const modelUrl = (
-      process.env.SCAN_MODEL_URL
-      || process.env.FACE_API_URL
-      || DEFAULT_SCAN_MODEL_URL
-    ).replace(/\/+$/, '');
-    response = await fetch(`${modelUrl}/scan-frames/single`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_b64: image.toString('base64') }),
-      signal: AbortSignal.timeout(15000),
-    });
-  } catch (error) {
-    throw new AppError(
-      error?.name === 'TimeoutError'
-        ? 'Single-item scan model timed out'
-        : 'Single-item scan model is unavailable',
-      503,
-    );
-  }
-
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new AppError('Single-item scan model returned an invalid response', 502);
-  }
-  if (!response.ok) throw new AppError('Single-item scan model rejected the image', 502);
-  if (
-    !result
-    || !Array.isArray(result.detections)
-    || !Number.isFinite(result.detection_threshold)
-    || result.detection_threshold < 0
-    || result.detection_threshold > 1
-    || typeof result.model_version !== 'string'
-  ) {
-    throw new AppError('Single-item scan model returned invalid results', 502);
-  }
-
-  const detections = result.detections.map((detection) => {
-    if (
-      !detection
-      || (detection.class_name !== 'QR-code'
-        && !SINGLE_ITEM_CLASSES.has(detection.class_name))
-      || !Number.isFinite(detection.confidence)
-      || detection.confidence < result.detection_threshold
-      || detection.confidence > 1
-      || !Array.isArray(detection.box)
-      || detection.box.length !== 4
-      || !detection.box.every(Number.isFinite)
-      || detection.box[2] <= detection.box[0]
-      || detection.box[3] <= detection.box[1]
-    ) {
-      throw new AppError('Single-item scan model returned an invalid detection', 502);
-    }
-    return detection;
-  });
-
-  return {
-    detections,
-    detection_threshold: result.detection_threshold,
-    model_version: result.model_version,
-  };
-};
-
-export const verifySingleFrame = async (
-  { item_unit_id, image_b64, persist_scan = false },
-  user_id,
-) => {
-  const item = await getPhysicalItem(item_unit_id);
-  if (item.kit_type_id !== null)
-    throw new AppError('This QR code identifies a kit, not a single item', 400);
-  if (!['Available', 'Needs Checking'].includes(item.status))
-    throw new AppError('This item is not currently available to borrow', 409);
-
-  const result = await callSingleModel(image_b64);
-  const qrDetections = result.detections.filter(
-    (detection) => detection.class_name === 'QR-code',
+const purgeExpiredScans = async () => {
+  // Unredeemed scans are only useful for 15 minutes; keep a day for debugging.
+  await pool.query(
+    `DELETE FROM kit_scans
+      WHERE reservation_id IS NULL AND expires_at < NOW() - INTERVAL '1 day'`,
   );
-  const itemDetections = result.detections.filter(
-    (detection) => detection.class_name !== 'QR-code',
+  await pool.query(
+    `DELETE FROM single_item_scans
+      WHERE reservation_id IS NULL AND expires_at < NOW() - INTERVAL '1 day'`,
   );
-  let detectedItem = null;
-  let status = 'unsure';
-  if (qrDetections.length === 1 && itemDetections.length === 1) {
-    detectedItem = itemDetections[0];
-    status = normalizeItemClass(detectedItem.class_name)
-      === normalizeItemClass(item.item_name)
-      ? 'success'
-      : 'wrong';
-  }
-
-  const scanResult = {
-    status,
-    detected_item_class: detectedItem?.class_name ?? null,
-    item_confidence: detectedItem?.confidence ?? null,
-    qr_confidence: qrDetections.length === 1
-      ? qrDetections[0].confidence
-      : null,
-    confidence_threshold: result.detection_threshold,
-    model_version: result.model_version,
-    single_scan_id: null,
-  };
-
-  if (persist_scan === true && status === 'success') {
-    const { rows } = await pool.query(
-      `INSERT INTO single_item_scans (
-         item_unit_id, user_id, detected_item_class, item_confidence,
-         qr_confidence, confidence_threshold, model_version,
-         expires_at
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW() + INTERVAL '15 minutes')
-       RETURNING id`,
-      [
-        item.item_unit_id,
-        user_id,
-        scanResult.detected_item_class,
-        scanResult.item_confidence,
-        scanResult.qr_confidence,
-        scanResult.confidence_threshold,
-        scanResult.model_version,
-      ],
-    );
-    scanResult.single_scan_id = rows[0].id;
-  }
-  return scanResult;
 };
 
-const assertKitScanPasses = (result) => {
-  if (result.status === 'success') return;
-  if (result.status === 'missing')
-    throw new AppError(`${result.empty_count} kit slot(s) appear empty`, 400);
-  if (result.status === 'wrong')
-    throw new AppError('Kit contents could not be counted consistently; reframe the box', 400);
-  throw new AppError('Tilt the box so its contents can be checked', 400);
+// Resolves the unit a scan frame is about. For a return the QR must belong to the
+// caller's open loan; for a checkout the unit must be borrowable.
+const loadScanTarget = async ({ qr_text, purpose = 'checkout', reservation_id }, user_id) => {
+  if (purpose !== 'checkout' && purpose !== 'return')
+    throw new AppError("purpose must be 'checkout' or 'return'", 400);
+  const unit = await findUnitByToken(pool, requireToken(qr_text));
+  assertKitConfigured(unit);
+
+  if (purpose === 'checkout') {
+    if (!BORROWABLE_STATUSES.includes(unit.status))
+      throw new AppError('This item is not currently available to borrow', 409);
+    return { unit, purpose };
+  }
+
+  const reservationId = positiveId(reservation_id, 'reservation_id');
+  const { rows } = await pool.query(
+    `SELECT id, item_unit_id FROM reservations
+      WHERE id = $1 AND user_id = $2 AND actual_return_date IS NULL`,
+    [reservationId, user_id],
+  );
+  if (!rows[0]) throw new AppError('You have no open loan with this id', 404);
+  if (rows[0].item_unit_id !== unit.item_unit_id)
+    throw new AppError('This QR code does not belong to the item you are returning', 400);
+  return { unit, purpose, reservationId };
+};
+
+const checkoutKitCounts = async (db, reservationId) => {
+  const { rows } = await db.query(
+    `SELECT empty_count, two_sensor_count FROM kit_scans
+      WHERE reservation_id = $1 AND purpose = 'checkout'`,
+    [reservationId],
+  );
+  return rows[0] ?? null;
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -303,213 +124,325 @@ export const getAvailableKits = async () => {
   return rows;
 };
 
-export const verifyKitFrame = async (
-  { kit_unit_id, image_b64, persist_scan = false },
-  user_id,
-) => {
-  const item = await getPhysicalItem(kit_unit_id);
-  if (item.kit_type_id === null)
-    throw new AppError('This QR code does not identify a kit box', 400);
-  if (!['Available', 'Needs Checking'].includes(item.status))
-    throw new AppError('This kit is not currently available to borrow', 409);
+export const resolveUnit = async ({ qr_text }) => {
+  const unit = await findUnitByToken(pool, requireToken(qr_text));
+  return {
+    item_unit_id: unit.item_unit_id,
+    is_kit: unit.kit_type_id !== null,
+    item_name: unit.item_name,
+    status: unit.status,
+    slot_count: unit.slot_count ?? null,
+  };
+};
 
-  const result = await callKitModel(item.kit_type_id, image_b64);
-  if (persist_scan === true && CONFIRMABLE_SCAN_STATUSES.has(result.status)) {
+export const verifyKitFrame = async (body, user_id) => {
+  const { unit, purpose, reservationId } = await loadScanTarget(body, user_id);
+  if (unit.kit_type_id === null)
+    throw new AppError('This QR code identifies a single item, not a kit', 400);
+  const persist = body.persist_scan === true;
+
+  const result = await callKitModel(unit.slot_count, body.image_b64, { official: persist });
+
+  let returnFlag = null;
+  let confirmable;
+  if (purpose === 'checkout') {
+    confirmable = isKitBorrowable(result);
+  } else {
+    returnFlag = kitReturnFlag(result, await checkoutKitCounts(pool, reservationId));
+    confirmable = returnFlag === null;
+  }
+
+  let kitScanId = null;
+  // Checkout keeps only borrowable scans; return keeps every official scan so a
+  // flagged return carries its evidence.
+  if (persist && (purpose === 'return' || confirmable)) {
     const { rows } = await pool.query(
       `INSERT INTO kit_scans (
-         kit_unit_id, user_id, empty_count, sensor_count, two_sensor_count,
-         expected_slots, status, confidence, confidence_threshold,
-         model_version, expires_at
+         kit_unit_id, user_id, purpose, empty_count, sensor_count, two_sensor_count,
+         expected_slots, status, confidence, confidence_threshold, model_version, expires_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW() + INTERVAL '15 minutes')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW() + ${SCAN_TTL})
        RETURNING id`,
       [
-        item.item_unit_id,
-        user_id,
-        result.empty_count,
-        result.sensor_count,
-        result.two_sensor_count,
-        result.expected_slots,
-        result.status,
-        result.confidence,
-        result.confidence_threshold,
-        result.model_version,
+        unit.item_unit_id, user_id, purpose,
+        result.empty_count, result.sensor_count, result.two_sensor_count,
+        result.expected_slots, result.status, result.confidence,
+        result.confidence_threshold, result.model_version,
       ],
     );
-    result.kit_scan_id = rows[0].id;
-  } else {
-    result.kit_scan_id = null;
+    kitScanId = rows[0].id;
+    await purgeExpiredScans();
   }
-  return result;
+
+  return {
+    ...result,
+    item_unit_id: unit.item_unit_id,
+    purpose,
+    confirmable,
+    fully_empty: result.empty_count >= result.expected_slots,
+    return_flag: returnFlag,
+    kit_scan_id: kitScanId,
+  };
 };
 
-export const makeReservation = async (
-  scanned_item_unit_id,
-  user_id,
-  kit_scan_id,
-  single_scan_id,
-) => {
+export const verifySingleFrame = async (body, user_id) => {
+  const { unit, purpose } = await loadScanTarget(body, user_id);
+  if (unit.kit_type_id !== null)
+    throw new AppError('This QR code identifies a kit, not a single item', 400);
+  const persist = body.persist_scan === true;
+  const threshold = singleThreshold();
 
-  return withLock(`borrow:${scanned_item_unit_id}`, async () => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
+  const model = await callSingleModel(body.image_b64, { official: persist });
+  const evaluation = evaluateSingle(model.detections, unit.item_name, threshold);
+  const returnFlag = purpose === 'return' ? singleReturnFlag(evaluation) : null;
+  const confirmable = evaluation.status === 'success';
 
-      // Lock row item_unit
-      const { rows: itemRows } = await client.query(
-        `SELECT iu.id, iu.item_id, iu.status, i.kit_type_id
-         FROM item_units iu
-         JOIN items i ON i.id = iu.item_id
-         WHERE iu.id = $1
-         FOR UPDATE`,
-        [scanned_item_unit_id]
+  let singleScanId = null;
+  if (persist && (purpose === 'return' || confirmable)) {
+    const { rows } = await pool.query(
+      `INSERT INTO single_item_scans (
+         item_unit_id, user_id, purpose, status, detected_item_class, detected_item_id,
+         item_confidence, qr_confidence, confidence_threshold, model_version, expires_at
+       )
+       VALUES ($1, $2, $3, $4, $5::text,
+               (SELECT id FROM items WHERE name = $5::text),
+               $6, $7, $8, $9, NOW() + ${SCAN_TTL})
+       RETURNING id`,
+      [
+        unit.item_unit_id, user_id, purpose, evaluation.status,
+        evaluation.detected_item_class, evaluation.item_confidence,
+        evaluation.qr_confidence, threshold, model.model_version,
+      ],
+    );
+    singleScanId = rows[0].id;
+    await purgeExpiredScans();
+  }
+
+  return {
+    ...evaluation,
+    item_unit_id: unit.item_unit_id,
+    purpose,
+    confirmable,
+    return_flag: returnFlag,
+    confidence_threshold: threshold,
+    model_version: model.model_version,
+    single_scan_id: singleScanId,
+  };
+};
+
+export const makeReservation = async ({ qr_text, kit_scan_id, single_scan_id }, user_id) => {
+  const token = requireToken(qr_text);
+  const kitScanId = optionalId(kit_scan_id, 'kit_scan_id');
+  const singleScanId = optionalId(single_scan_id, 'single_scan_id');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const unit = await findUnitByToken(client, token, { lock: true });
+    if (unit.status === 'Broken')
+      throw new AppError('This device is broken and cannot be borrowed', 400);
+    if (unit.status === 'Borrowed')
+      throw new AppError('Device is already being borrowed', 409);
+
+    let scanTable;
+    let scanId;
+    if (unit.kit_type_id !== null) {
+      if (singleScanId !== null)
+        throw new AppError('A single-item scan cannot be used to borrow a kit', 400);
+      if (kitScanId === null)
+        throw new AppError('A verified kit scan is required to borrow this kit', 400);
+      const { rows } = await client.query(
+        `SELECT id, status, empty_count, expected_slots FROM kit_scans
+          WHERE id = $1 AND kit_unit_id = $2 AND user_id = $3 AND purpose = 'checkout'
+            AND reservation_id IS NULL AND expires_at > NOW()
+          FOR UPDATE`,
+        [kitScanId, unit.item_unit_id, user_id],
       );
-
-      const item_unit_id = itemRows[0]?.id;
-      const item_id      = itemRows[0]?.item_id;
-      const unitStatus   = itemRows[0]?.status;
-      const kit_type_id  = itemRows[0]?.kit_type_id;
-
-      if (!item_unit_id) throw new AppError('Item unit not found', 404);
-
-      // Block borrowing broken items; allow Available and Needs Checking
-      if (unitStatus === 'Broken') {
-        throw new AppError('This device is broken and cannot be borrowed', 400);
-      }
-      if (unitStatus === 'Borrowed') {
-        throw new AppError('Device is already being borrowed', 409);
-      }
-
-      let kitScan = null;
-      let singleScan = null;
-      if (kit_type_id !== null) {
-        if (single_scan_id !== undefined && single_scan_id !== null)
-          throw new AppError('A single-item scan cannot be used to borrow a kit', 400);
-        const scanId = Number(kit_scan_id);
-        if (!Number.isSafeInteger(scanId) || scanId < 1)
-          throw new AppError('A verified kit scan is required to borrow this kit', 400);
-        const { rows: scanRows } = await client.query(
-          `SELECT id, status
-           FROM kit_scans
-           WHERE id = $1
-             AND kit_unit_id = $2
-             AND user_id = $3
-             AND reservation_id IS NULL
-             AND expires_at > NOW()
-           FOR UPDATE`,
-          [scanId, item_unit_id, user_id],
-        );
-        kitScan = scanRows[0] ?? null;
-        if (!kitScan || !CONFIRMABLE_SCAN_STATUSES.has(kitScan.status))
-          throw new AppError('Kit scan is missing or expired; scan the kit again', 409);
-      } else {
-        if (kit_scan_id !== undefined && kit_scan_id !== null)
-          throw new AppError('A kit scan cannot be used to borrow a single item', 400);
-        const scanId = Number(single_scan_id);
-        if (!Number.isSafeInteger(scanId) || scanId < 1)
-          throw new AppError('A verified single-item scan is required to borrow this item', 400);
-        const { rows: scanRows } = await client.query(
-          `SELECT id
-           FROM single_item_scans
-           WHERE id = $1
-             AND item_unit_id = $2
-             AND user_id = $3
-             AND reservation_id IS NULL
-             AND expires_at > NOW()
-           FOR UPDATE`,
-          [scanId, item_unit_id, user_id],
-        );
-        singleScan = scanRows[0] ?? null;
-        if (!singleScan)
-          throw new AppError('Single-item scan is missing or expired; scan the item again', 409);
-      }
-
-      const { rows: courseRows } = await client.query(
-        `SELECT ci.course_id FROM course_item ci
-        JOIN items i ON ci.item_id = i.id
-        WHERE i.id = $1`,
-        [item_id]
+      if (!rows[0])
+        throw new AppError('Kit scan is missing or expired; scan the kit again', 409);
+      if (!isKitBorrowable(rows[0]))
+        throw new AppError('A completely empty kit cannot be borrowed', 400);
+      scanTable = 'kit_scans';
+      scanId = rows[0].id;
+    } else {
+      if (kitScanId !== null)
+        throw new AppError('A kit scan cannot be used to borrow a single item', 400);
+      if (singleScanId === null)
+        throw new AppError('A verified single-item scan is required to borrow this item', 400);
+      const { rows } = await client.query(
+        `SELECT id FROM single_item_scans
+          WHERE id = $1 AND item_unit_id = $2 AND user_id = $3 AND purpose = 'checkout'
+            AND status = 'success' AND reservation_id IS NULL AND expires_at > NOW()
+          FOR UPDATE`,
+        [singleScanId, unit.item_unit_id, user_id],
       );
-
-      const course_id = courseRows[0]?.course_id;
-      if (!course_id) throw new AppError('Item is not available for the current course', 400);
-
-      const { rows: timetableRows } = await client.query(
-        `SELECT tu.timetable_id FROM timetable_user tu
-        JOIN timetable t ON tu.timetable_id = t.id
-        WHERE t.start_time <= NOW()::TIME AND t.end_time >= NOW()::TIME
-        AND t.day_of_week = EXTRACT(DOW FROM NOW())
-        AND tu.user_id = $1
-        LIMIT 1`,
-        [user_id]
-      );
-
-      const timetable_id = timetableRows[0]?.timetable_id;
-      if (!timetable_id) throw new AppError('No active timetable found for the user', 404);
-
-      const reservation = await createReservation(item_unit_id, user_id, timetable_id, client);
-      if (!reservation) throw new AppError('Device is already being borrowed by another user', 409);
-
-      if (kitScan) {
-        const { rows: linkedScans } = await client.query(
-          `UPDATE kit_scans
-           SET reservation_id = $1, confirmed_at = NOW()
-           WHERE id = $2 AND reservation_id IS NULL
-           RETURNING id`,
-          [reservation.id, kitScan.id],
-        );
-        if (!linkedScans[0])
-          throw new AppError('Kit scan was already used; scan the kit again', 409);
-      }
-      if (singleScan) {
-        const { rows: linkedScans } = await client.query(
-          `UPDATE single_item_scans
-           SET reservation_id = $1, confirmed_at = NOW()
-           WHERE id = $2 AND reservation_id IS NULL
-           RETURNING id`,
-          [reservation.id, singleScan.id],
-        );
-        if (!linkedScans[0])
-          throw new AppError('Single-item scan was already used; scan the item again', 409);
-      }
-
-      await client.query(
-        `UPDATE item_units SET status = 'Borrowed' WHERE id = $1`,
-        [item_unit_id]
-      );
-
-      await client.query('COMMIT');
-      return reservation;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+      if (!rows[0])
+        throw new AppError('Single-item scan is missing or expired; scan the item again', 409);
+      scanTable = 'single_item_scans';
+      scanId = rows[0].id;
     }
-  });
+
+    // The student must be in a class right now whose course uses this item.
+    const { rows: timetableRows } = await client.query(
+      `SELECT tu.timetable_id
+         FROM timetable_user tu
+         JOIN timetable t    ON t.id = tu.timetable_id
+         JOIN course_item ci ON ci.course_id = t.course_id AND ci.item_id = $2
+        WHERE tu.user_id = $1
+          AND t.day_of_week = EXTRACT(DOW FROM (NOW() AT TIME ZONE $3))
+          AND (NOW() AT TIME ZONE $3)::time BETWEEN t.start_time AND t.end_time
+        ORDER BY t.start_time
+        LIMIT 1`,
+      [user_id, unit.item_id, labTimeZone()],
+    );
+    const timetable_id = timetableRows[0]?.timetable_id;
+    if (!timetable_id)
+      throw new AppError('This item is not part of a class you have right now', 403);
+
+    const reservation = await createReservation(unit.item_unit_id, user_id, timetable_id, client);
+    if (!reservation) throw new AppError('Device is already being borrowed by another user', 409);
+
+    await client.query(
+      `UPDATE ${scanTable} SET reservation_id = $1, confirmed_at = NOW() WHERE id = $2`,
+      [reservation.id, scanId],
+    );
+    await client.query(
+      `UPDATE item_units SET status = 'Borrowed' WHERE id = $1`,
+      [unit.item_unit_id],
+    );
+
+    await client.query('COMMIT');
+    return reservation;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 };
 
-export const returnItem = async ({
-  reservation_id,
-  item_unit_id,
-  scanned_item_unit_id,
-  image_b64,
-}) => {
-  validateQrMatch(scanned_item_unit_id, item_unit_id);
-  const item = await getPhysicalItem(scanned_item_unit_id);
-  if (item.kit_type_id !== null) {
-    const scan = await callKitModel(item.kit_type_id, image_b64);
-    assertKitScanPasses(scan);
+// Closes the caller's open loan. The unit comes from the reservation, the scanned QR
+// must match it, and the return scan (if any) decides the flag. A missing or failed
+// scan never blocks the return: the loan closes with a flag for the admin.
+export const returnItem = async (
+  { reservation_id, qr_text, kit_scan_id, single_scan_id },
+  user_id,
+) => {
+  const reservationId = positiveId(reservation_id, 'reservation id');
+  const token = requireToken(qr_text);
+  const kitScanId = optionalId(kit_scan_id, 'kit_scan_id');
+  const singleScanId = optionalId(single_scan_id, 'single_scan_id');
+  if (kitScanId !== null && singleScanId !== null)
+    throw new AppError('Send either a kit scan or a single-item scan, not both', 400);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: reservationRows } = await client.query(
+      `SELECT id, item_unit_id FROM reservations
+        WHERE id = $1 AND user_id = $2 AND actual_return_date IS NULL
+        FOR UPDATE`,
+      [reservationId, user_id],
+    );
+    const reservation = reservationRows[0];
+    if (!reservation) throw new AppError('You have no open loan with this id', 404);
+
+    const { rows: unitRows } = await client.query(
+      `SELECT ${UNIT_COLUMNS} ${UNIT_FROM} WHERE iu.id = $1 FOR UPDATE OF iu`,
+      [reservation.item_unit_id],
+    );
+    const unit = unitRows[0];
+    if (!unit.qr_token)
+      throw new AppError('This item has no registered QR code; ask the lab admin', 409);
+    if (unit.qr_token !== token)
+      throw new AppError('This QR code does not belong to the item you are returning', 400);
+
+    const isKit = unit.kit_type_id !== null;
+    if (isKit && singleScanId !== null)
+      throw new AppError('A single-item scan cannot be used to return a kit', 400);
+    if (!isKit && kitScanId !== null)
+      throw new AppError('A kit scan cannot be used to return a single item', 400);
+
+    let returnFlag = 'scan_unavailable';
+    let scanTable = null;
+    let scanId = null;
+    if (isKit && kitScanId !== null) {
+      const { rows } = await client.query(
+        `SELECT id, status, empty_count, two_sensor_count FROM kit_scans
+          WHERE id = $1 AND kit_unit_id = $2 AND user_id = $3 AND purpose = 'return'
+            AND reservation_id IS NULL AND expires_at > NOW()
+          FOR UPDATE`,
+        [kitScanId, unit.item_unit_id, user_id],
+      );
+      if (!rows[0]) throw new AppError('Return scan is missing or expired; scan again', 409);
+      returnFlag = kitReturnFlag(rows[0], await checkoutKitCounts(client, reservation.id));
+      scanTable = 'kit_scans';
+      scanId = rows[0].id;
+    } else if (!isKit && singleScanId !== null) {
+      const { rows } = await client.query(
+        `SELECT id, status FROM single_item_scans
+          WHERE id = $1 AND item_unit_id = $2 AND user_id = $3 AND purpose = 'return'
+            AND reservation_id IS NULL AND expires_at > NOW()
+          FOR UPDATE`,
+        [singleScanId, unit.item_unit_id, user_id],
+      );
+      if (!rows[0]) throw new AppError('Return scan is missing or expired; scan again', 409);
+      returnFlag = singleReturnFlag(rows[0]);
+      scanTable = 'single_item_scans';
+      scanId = rows[0].id;
+    }
+
+    const { rows: closed } = await client.query(
+      `UPDATE reservations
+          SET actual_return_date = NOW(), return_flag = $2
+        WHERE id = $1
+        RETURNING *`,
+      [reservation.id, returnFlag],
+    );
+    if (scanTable) {
+      await client.query(
+        `UPDATE ${scanTable} SET reservation_id = $1, confirmed_at = NOW() WHERE id = $2`,
+        [reservation.id, scanId],
+      );
+    }
+    // The admin verifies condition before the unit goes back to Available.
+    await client.query(
+      `UPDATE item_units SET status = 'Needs Checking' WHERE id = $1`,
+      [unit.item_unit_id],
+    );
+
+    await client.query('COMMIT');
+    return closed[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
+};
 
-  const result = await markReturned(reservation_id);
-  if (!result) throw new AppError('Reservation does not exist or already returned', 400);
-
-  // Set item unit to Needs Checking — admin will verify condition before it goes Available
-  await pool.query(
-    `UPDATE item_units SET status = 'Needs Checking' WHERE id = $1`,
-    [item_unit_id]
-  );
-
-  return result;
+export const registerUnitQrToken = async (itemUnitId, { qr }) => {
+  const id = positiveId(itemUnitId, 'item unit id');
+  let token = null;
+  if (qr !== null) {
+    token = typeof qr === 'string' && /^[A-Za-z0-9]{8}$/.test(qr.trim())
+      ? qr.trim()
+      : parseQrToken(qr);
+    if (!token)
+      throw new AppError('qr must be a q.me-qr.com link, an 8-character token, or null', 400);
+  }
+  try {
+    const { rows } = await pool.query(
+      `UPDATE item_units SET qr_token = $1 WHERE id = $2 RETURNING id, item_id, status, qr_token`,
+      [token, id],
+    );
+    if (!rows[0]) throw new AppError('Item unit not found', 404);
+    return rows[0];
+  } catch (error) {
+    if (error.code === '23505')
+      throw new AppError('This QR code is already registered to another unit', 409);
+    throw error;
+  }
 };

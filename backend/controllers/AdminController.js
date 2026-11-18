@@ -10,6 +10,7 @@ import { getAllLabs }                                    from '../models/Lab.js'
 import { getAllCourses }                                 from '../models/Course.js';
 import { getAllFeedback }                                from '../models/Feedback.js';
 import { AppError }                                      from '../utils/AppError.js';
+import { registerUnitQrToken }                           from '../services/ReservationService.js';
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 export const handleDashboard = async (req, res, next) => {
@@ -129,6 +130,15 @@ export const handleUpdateItemUnit = async (req, res, next) => {
     const unit = await updateItemUnit(parseInt(req.params.id), lab_id, status);
     if (!unit) throw new AppError('Item unit not found', 404);
     return res.json({ message: 'Item unit updated', data: unit });
+  } catch (err) { next(err); }
+};
+
+// Body: { qr: "https://q.me-qr.com/<token>" | "<token>" | null }
+export const handleSetItemUnitQrToken = async (req, res, next) => {
+  try {
+    if (!req.body || !('qr' in req.body)) throw new AppError('qr is required (use null to clear)', 400);
+    const unit = await registerUnitQrToken(req.params.id, { qr: req.body.qr });
+    return res.json({ message: unit.qr_token ? 'QR code registered' : 'QR code cleared', data: unit });
   } catch (err) { next(err); }
 };
 

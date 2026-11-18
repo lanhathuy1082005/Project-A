@@ -88,18 +88,6 @@ export const createReservation = async (item_unit_id, user_id, timetable_id, cli
   return rows[0] ?? null;
 };
 
-export const markReturned = async (reservation_id) => {
-  const { rows } = await pool.query(
-    `UPDATE reservations
-     SET actual_return_date = NOW()
-     WHERE id = $1
-       AND actual_return_date IS NULL
-     RETURNING *`,
-    [reservation_id]
-  );
-  return rows[0] ?? null;
-};
-
 export const markApproved = async (reservation_id) => {
   const { rows } = await pool.query(
     `UPDATE reservations

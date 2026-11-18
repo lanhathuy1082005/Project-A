@@ -45,7 +45,7 @@ export const getAllItemUnits = async ({ limit, offset, status }) => {
 
   const [rows, count] = await Promise.all([
     pool.query(
-      `SELECT iu.id, iu.status,
+      `SELECT iu.id, iu.status, iu.qr_token,
               i.id AS item_id, i.name AS item_name,
               l.id AS lab_id, l.name AS lab_name
        FROM item_units iu
@@ -100,7 +100,7 @@ export const getInventoryStats = async () => {
   const { rows } = await pool.query(
     `SELECT
        COUNT(*) FILTER (WHERE status = 'Borrowed') AS borrowed_count,
-       COUNT(*) FILTER (WHERE status = 'Maintenance') AS maintenance_count,
+       COUNT(*) FILTER (WHERE status = 'Broken') AS maintenance_count,
        COUNT(*) FILTER (WHERE status = 'Available') AS available_count
      FROM item_units`
   );

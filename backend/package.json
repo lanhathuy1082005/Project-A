@@ -15,6 +15,6 @@
   "scripts": {
     "dev": "nodemon index.js",
     "migrate": "node scripts/migrate.js",
-    "test": "node --test --test-concurrency=1 tests/"
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\""
   }
 }

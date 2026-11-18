@@ -6,6 +6,7 @@ import {
   handleCreateClass, handleUpdateClass, handleDeleteClass,
   handleGetItems, handleAddItem, handleUpdateItem, handleDeleteItem,
   handleGetItemUnits, handleAddItemUnit, handleUpdateItemUnit, handleDeleteItemUnit,
+  handleSetItemUnitQrToken,
   handleGetAllReservations, handleGetReservationDetail,
   handleGetPendingReturns, handleVerifyReturn, handleReportIssue,
   handleGetLogs,
@@ -38,6 +39,7 @@ router.get('/item-units',        admin, paginate, handleGetItemUnits);
 router.post('/item-units',       admin,           handleAddItemUnit);
 router.patch('/item-units/:id',  admin,           handleUpdateItemUnit);
 router.delete('/item-units/:id', admin,           handleDeleteItemUnit);
+router.put('/item-units/:id/qr-token', admin,     handleSetItemUnitQrToken);
 
 // Borrow & Return Management
 router.get('/reservations',           admin, paginate, handleGetAllReservations);
