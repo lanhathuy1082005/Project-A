@@ -16,7 +16,8 @@ const mockGetUserTruthByUserId = async (id) => {
   const users_truth = [
     { id: 'user1' },
     { id: 'user2' },
-    { id: 'user3' }
+    { id: 'user3' },
+    { id: 'user4' },
   ];
   return users_truth.find((u) => u.id === id);
 };

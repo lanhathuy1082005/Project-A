@@ -12,6 +12,7 @@ dist
 dist-ssr
 .local
 .venv
+.env
 
 # Editor directories and files
 .vscode/
@@ -22,19 +23,14 @@ dist-ssr
 .ntvs
 *.njsproj
 *.sln
-<<<<<<< HEAD
-.sw?
-certs/
-=======
 *.sw?
-certs/*
->>>>>>> d38d5d9c1c7d1f901c0193b03876f6306bc06f5a
+certs/
 
-pycache/
+__pycache__/
 services/face/reference_faces/*
-<<<<<<< HEAD
-!services/face/reference_faces/.gitkeep
-=======
 !services/face/reference_faces/.gitkeep
 
->>>>>>> d38d5d9c1c7d1f901c0193b03876f6306bc06f5a
+# Model weights, raw annotation exports and test images stay local
+services/face/scan_weights/*.pt
+services/face/scan_weights/*.coco.json
+services/face/scan_tests/

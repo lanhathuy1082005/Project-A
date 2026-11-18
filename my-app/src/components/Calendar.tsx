@@ -51,6 +51,10 @@ function dateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function dateKeyFromISOString(value: string): string {
+  return dateKey(new Date(value));
+}
+
 function dateFromKey(value: string): Date {
   const [year = 0, month = 1, day = 1] = value
     .slice(0, 10)
@@ -105,6 +109,9 @@ export function Calendar({ classes }: CalendarProps) {
   const events = useMemo(() => toCalendarEvents(classes), [classes]);
   const timeRange = useMemo(() => getTimeRange(classes), [classes]);
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const handleDateChange = (value: string) => {
+    setSelectedDate(dateKeyFromISOString(value));
+  };
   const selectedDay = dateFromKey(selectedDate);
   const selectedClasses = classes
     .filter(({ day_of_week }) => day_of_week === selectedDay.getDay())
@@ -121,14 +128,21 @@ export function Calendar({ classes }: CalendarProps) {
     <View style={styles.card}>
       <Text style={styles.title}>Weekly timetable</Text>
       <View style={styles.calendar}>
+        <Text style={styles.calendarHint}>Tap a date to view its schedule.</Text>
         <CalendarContainer
           end={timeRange.end}
           events={events}
           firstDay={1}
+          highlightDates={{
+            [selectedDate]: {
+              dayNumberContainer: styles.selectedDayContainer,
+              dayNumber: styles.selectedDayNumber,
+            },
+          }}
           initialDate={selectedDate}
           numberOfDays={7}
-          onDateChanged={setSelectedDate}
-          onPressDayNumber={setSelectedDate}
+          onDateChanged={handleDateChange}
+          onPressDayNumber={handleDateChange}
           scrollToNow
           start={timeRange.start}
           theme={{
@@ -189,6 +203,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 8,
     backgroundColor: Colors.light.background,
+  },
+  calendarHint: {
+    paddingHorizontal: Spacing.two,
+    paddingTop: Spacing.two,
+    color: Colors.light.textSecondary,
+    fontSize: 12,
+  },
+  selectedDayContainer: {
+    backgroundColor: '#2563EB',
+  },
+  selectedDayNumber: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   agenda: {
     gap: Spacing.two,

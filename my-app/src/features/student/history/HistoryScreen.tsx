@@ -9,6 +9,7 @@ import { getErrorMessage } from '@/api/client';
 import {
   returnItemApi,
   type Reservation,
+  type ScanConfirmation,
 } from '@/api/reservation.api';
 import { AppButton } from '@/components/ui/AppButton';
 import { InlineNotice } from '@/components/ui/InlineNotice';
@@ -36,7 +37,7 @@ export default function HistoryScreen() {
   const [showFeedback, setShowFeedback] = useState(false);
   const totalPages = Math.ceil(total / limit);
 
-  const confirmReturn = async (scannedUnitId: number) => {
+  const confirmReturn = async (confirmation: ScanConfirmation) => {
     if (!pendingReturn || returning) return;
 
     setReturning(true);
@@ -45,7 +46,8 @@ export default function HistoryScreen() {
       await returnItemApi(
         pendingReturn.id,
         pendingReturn.item_unit_id,
-        scannedUnitId,
+        confirmation.unitId,
+        confirmation.imageB64,
       );
       setPendingReturn(null);
       refetch();
@@ -133,7 +135,7 @@ export default function HistoryScreen() {
           setPendingReturn(null);
           setReturnError(null);
         }}
-        onConfirm={(scannedUnitId) => void confirmReturn(scannedUnitId)}
+        onConfirm={(confirmation) => void confirmReturn(confirmation)}
       />
       <FeedbackModal
         visible={showFeedback}

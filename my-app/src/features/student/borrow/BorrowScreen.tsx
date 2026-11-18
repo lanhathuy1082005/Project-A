@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Keyboard, ScrollView, Text, View } from 'react-native';
 import { InlineNotice } from '@/components/ui/InlineNotice';
 import { QRScanner } from '@/components/QRScanner';
 import { BackToHomeButton } from '@/components/ui/BackToHomeButton';
 import { getErrorMessage } from '@/api/client';
-import { borrowItemApi } from '@/api/reservation.api';
+import {
+  getAvailableKitsApi,
+  borrowItemApi,
+  type AvailableKit,
+  type ScanConfirmation,
+} from '@/api/reservation.api';
 import { borrowStyles } from './borrow.styles';
 
 export default function BorrowScreen() {
@@ -12,8 +17,43 @@ export default function BorrowScreen() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [scannerKey, setScannerKey] = useState(0);
+  const [kits, setKits] = useState<AvailableKit[]>([]);
+  const [kitsLoading, setKitsLoading] = useState(true);
+  const [kitsError, setKitsError] = useState<string | null>(null);
 
-  const handleBorrow = async (scannedUnitId: number) => {
+  const requestKits = useCallback(async () => {
+    try {
+      return { data: await getAvailableKitsApi(), error: null };
+    } catch (requestError) {
+      return {
+        data: null,
+        error: getErrorMessage(requestError, 'Could not load available kits.'),
+      };
+    }
+  }, []);
+
+  const refreshKits = useCallback(async () => {
+    setKitsLoading(true);
+    const result = await requestKits();
+    if (result.data) setKits(result.data);
+    setKitsError(result.error);
+    setKitsLoading(false);
+  }, [requestKits]);
+
+  useEffect(() => {
+    let active = true;
+    void requestKits().then((result) => {
+      if (!active) return;
+      if (result.data) setKits(result.data);
+      setKitsError(result.error);
+      setKitsLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [requestKits]);
+
+  const handleBorrow = async (confirmation: ScanConfirmation) => {
     if (submitting) return;
 
     Keyboard.dismiss();
@@ -21,9 +61,15 @@ export default function BorrowScreen() {
     setError(null);
     setSuccess(null);
     try {
-      await borrowItemApi(scannedUnitId);
+      await borrowItemApi(
+        confirmation.unitId,
+        confirmation.imageB64,
+        confirmation.kitScanId,
+        confirmation.singleScanId,
+      );
       setSuccess('Item borrowed successfully.');
       setScannerKey((key) => key + 1);
+      refreshKits();
     } catch (requestError) {
       setError(getErrorMessage(requestError, 'Could not borrow this item.'));
     } finally {
@@ -41,7 +87,7 @@ export default function BorrowScreen() {
       >
         <Text style={borrowStyles.title}>Borrow an item</Text>
         <Text style={borrowStyles.description}>
-          Scan the item QR code to borrow it.
+          Choose a mode, then scan an item or kit to borrow it.
         </Text>
         {success ? <InlineNotice message={success} tone="success" /> : null}
         <QRScanner
@@ -49,7 +95,15 @@ export default function BorrowScreen() {
           actionLabel="Confirm borrow"
           busy={submitting}
           error={error}
-          onConfirm={(scannedUnitId) => void handleBorrow(scannedUnitId)}
+          kitOptions={kits}
+          kitOptionsLoading={kitsLoading}
+          kitOptionsError={kitsError}
+          onRefreshKitOptions={refreshKits}
+          allowIncompleteKit
+          persistKitScans
+          verifySingleItems
+          persistSingleScans
+          onConfirm={(confirmation) => void handleBorrow(confirmation)}
         />
       </ScrollView>
     </View>

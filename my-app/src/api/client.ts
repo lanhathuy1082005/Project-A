@@ -33,12 +33,14 @@ async function request(
   method: 'GET' | 'POST' | 'PATCH',
   path: string,
   body?: object,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     method,
     credentials: 'include',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   const responseText = await response.text();
@@ -68,6 +70,8 @@ export const client = {
   get: (path: string) => request('GET', path),
   post: (path: string, body: object) =>
     request('POST', path, body),
+  postWithSignal: (path: string, body: object, signal: AbortSignal) =>
+    request('POST', path, body, signal),
   patch: (path: string, body: object) =>
     request('PATCH', path, body),
 };

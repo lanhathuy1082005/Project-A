@@ -2,6 +2,7 @@ import { AppError } from '../utils/AppError.js';
 
 export const requireRoles = (...allowedRoles) => (req, _res, next) => {
   const user = req.session?.user;
+  console.log('User in session:', user); // Debugging line
   if (!user)                          throw new AppError('Not logged in', 401);
   if (!allowedRoles.includes(user.role)) throw new AppError('Insufficient permissions', 403);
   next();

@@ -13,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic           import BaseModel
 from deepface          import DeepFace
 
+if __package__:
+    from .scan_service import router as scan_router
+else:
+    from scan_service import router as scan_router
+
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -122,3 +127,6 @@ async def verify_face(req: VerifyRequest):
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"Server error: {e}")
+
+
+app.include_router(scan_router)
