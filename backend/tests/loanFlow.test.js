@@ -205,6 +205,23 @@ describe('kit checkout and the empty-kit rule', () => {
   });
 });
 
+describe('image encoding from phones', () => {
+  test('line-wrapped base64 and data: prefixes are cleaned before the model sees them', async () => {
+    const wrapped = JPEG_B64.match(/.{1,4}/g).join('\r\n');           // Android wraps lines
+    const res1 = await singleFrame(s1, TOKENS.uno, { image_b64: wrapped });
+    assert.equal(res1.status, 200, JSON.stringify(res1.body));
+    assert.equal(model.lastBody.image_b64, JPEG_B64);
+    const res2 = await singleFrame(s1, TOKENS.uno, { image_b64: `data:image/jpeg;base64,${JPEG_B64}` });
+    assert.equal(res2.status, 200);
+    assert.equal(model.lastBody.image_b64, JPEG_B64);
+  });
+  test('real garbage is still rejected', async () => {
+    const res = await singleFrame(s1, TOKENS.uno, { image_b64: 'not*base64!' });
+    assert.equal(res.status, 400);
+    assert.equal((await singleFrame(s1, TOKENS.uno, { image_b64: Buffer.from('hello').toString('base64') })).status, 400);
+  });
+});
+
 describe('scan model failures', () => {
   test('inconsistent model output is a 502', async () => {
     model.kit = () => ({ ...kitResult({ empty: 1, sensor: 5 }), status: 'success' });

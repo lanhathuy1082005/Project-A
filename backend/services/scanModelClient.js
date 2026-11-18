@@ -13,17 +13,28 @@ const modelUrl = () => (
   process.env.SCAN_MODEL_URL || process.env.FACE_API_URL || DEFAULT_SCAN_MODEL_URL
 ).replace(/\/+$/, '');
 
-export const decodeJpeg = (imageB64) => {
+// Phones send base64 in slightly different shapes: Android wraps lines every 76
+// characters and some clients add a data: URL prefix. Normalize to plain base64 and
+// return it, so the exact string checked here is the one forwarded to Python.
+export const normalizeJpegB64 = (imageB64) => {
   if (typeof imageB64 !== 'string' || imageB64.length === 0)
     throw new AppError('A scan image is required', 400);
-  const image = Buffer.from(imageB64, 'base64');
-  if (image.toString('base64') !== imageB64)
+  const cleaned = imageB64
+    .replace(/^data:image\/[a-z+.-]+;base64,/i, '')
+    .replace(/\s+/g, '');
+  if (cleaned !== imageB64)
+    scanLog('image.normalized', { removed_chars: imageB64.length - cleaned.length,
+      had_prefix: imageB64.startsWith('data:') });
+  const image = Buffer.from(cleaned, 'base64');
+  if (cleaned.length === 0 || image.toString('base64') !== cleaned) {
+    scanLog('image.invalid_b64', { length: imageB64.length, head: imageB64.slice(0, 40) });
     throw new AppError('Scan image must contain valid base64', 400);
+  }
   if (!image.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
     throw new AppError('Scan image must be a JPEG image', 400);
   if (image.length > MAX_IMAGE_BYTES)
     throw new AppError('Scan image exceeds the maximum size', 413);
-  return image;
+  return cleaned;
 };
 
 const post = async (path, body, { official, label }) => {
@@ -66,11 +77,11 @@ const isUnit = (n) => Number.isFinite(n) && n >= 0 && n <= 1;
 const isCount = (n) => Number.isSafeInteger(n) && n >= 0;
 
 export const callKitModel = async (expectedSlots, imageB64, { official = false } = {}) => {
-  decodeJpeg(imageB64);
+  const image_b64 = normalizeJpegB64(imageB64);
   const label = 'Kit scan model';
   const result = await post(
     '/scan-frames/kit',
-    { image_b64: imageB64, expected_slots: expectedSlots },
+    { image_b64, expected_slots: expectedSlots },
     { official, label },
   );
   if (
@@ -104,9 +115,9 @@ export const callKitModel = async (expectedSlots, imageB64, { official = false }
 };
 
 export const callSingleModel = async (imageB64, { official = false } = {}) => {
-  decodeJpeg(imageB64);
+  const image_b64 = normalizeJpegB64(imageB64);
   const label = 'Single-item scan model';
-  const result = await post('/scan-frames/single', { image_b64: imageB64 }, { official, label });
+  const result = await post('/scan-frames/single', { image_b64 }, { official, label });
   if (
     !result
     || !Array.isArray(result.detections)

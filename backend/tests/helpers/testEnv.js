@@ -123,6 +123,7 @@ export const startFakeModel = async () => {
     req.on('data', (chunk) => { raw += chunk; });
     req.on('end', async () => {
       const body = JSON.parse(raw || '{}');
+      state.lastBody = body;
       if (state.delayMs) await new Promise((r) => setTimeout(r, state.delayMs));
       const result = req.url === '/scan-frames/kit' ? state.kit(body) : state.single(body);
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -141,6 +142,7 @@ export const startApp = async (modelUrl) => {
   delete process.env.SSL_KEY_PATH;   // plain-HTTP test server: session cookie must not be Secure
   delete process.env.SSL_CERT_PATH;
   process.env.NODE_ENV = 'test';
+  process.env.SCAN_DEBUG = process.env.TEST_SCAN_DEBUG ?? 'false'; // dev .env may turn it on
   process.env.SCAN_MODEL_URL = modelUrl;
   process.env.SCAN_PREVIEW_TIMEOUT_MS = '300';
   process.env.SCAN_OFFICIAL_TIMEOUT_MS = '2000';
