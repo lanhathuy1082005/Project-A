@@ -1,0 +1,12 @@
+{
+  "source": "kit_annotations.coco.json",
+  "placeholder": {
+    "id": 0,
+    "name": "sensor-HkNj"
+  },
+  "classes": {
+    "1": "2xsensor",
+    "2": "empty",
+    "3": "sensor"
+  }
+}

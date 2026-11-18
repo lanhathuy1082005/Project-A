@@ -1,6 +1,9 @@
 """
 Face Service — FastAPI + DeepFace
-Run: uvicorn face_service:app --host 0.0.0.0 --port 8000 --reload
+Run: uvicorn face_service:app --host 127.0.0.1 --port 8000
+
+Bind to 127.0.0.1: only the Node backend on this machine should call it
+(the scan and face endpoints have no auth of their own).
 """
 
 import os
@@ -14,9 +17,9 @@ from pydantic           import BaseModel
 from deepface          import DeepFace
 
 if __package__:
-    from .scan_service import router as scan_router
+    from .scan_service import router as scan_router, load_scan_models
 else:
-    from scan_service import router as scan_router
+    from scan_service import router as scan_router, load_scan_models
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -31,6 +34,8 @@ ALLOWED_ORIGINS = os.getenv("FACE_CORS_ORIGINS", "http://localhost:3000").split(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     DeepFace.build_model("ArcFace")
+    # Fails startup on a missing checkpoint or a class map that does not match it.
+    load_scan_models()
     yield
 
 

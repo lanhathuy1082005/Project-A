@@ -1,0 +1,16 @@
+{
+  "source": "single_items_annotations.coco.json",
+  "placeholder": {
+    "id": 0,
+    "name": "Qualcom-Lab-Detection"
+  },
+  "classes": {
+    "1": "Arduino-Nano-33-BLE-Rev2",
+    "2": "Arduino-Nano-Every",
+    "3": "Arduino-Nano-Motor-Carrier",
+    "4": "Arduino-Nano-R4-Headers",
+    "5": "Arduino-UNO-R3",
+    "6": "Arduino-UNO-R4-WiFi",
+    "7": "QR-code"
+  }
+}
