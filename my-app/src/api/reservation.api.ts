@@ -62,10 +62,26 @@ export interface SingleScanResult extends FrameOutcome {
   single_scan_id: number | null;
 }
 
+export interface AvailableKit {
+  unit_id: number;
+  status: string;
+  item_name: string;
+  kit_type_id: number;
+  kit_type_name: string;
+  slot_count: number;
+}
+
+export interface AvailableKits {
+  kits: AvailableKit[];
+  // false: students pick the kit from the list (no kit QR stickers yet)
+  kitQrRequired: boolean;
+}
+
 // What the scanner hands to the borrow / return screen. With no scan id on a return,
-// the server closes the loan flagged as scan_unavailable.
+// the server closes the loan flagged as scan_unavailable. qrText is absent for a kit
+// picked from the list and for kit returns (checked by contents only).
 export interface ScanConfirmation {
-  qrText: string;
+  qrText?: string;
   unitId: number;
   isKit: boolean;
   kitScanId?: number;
@@ -219,8 +235,36 @@ export async function resolveUnitApi(qrText: string): Promise<ResolvedUnit> {
   };
 }
 
+export async function getAvailableKitsApi(): Promise<AvailableKits> {
+  const response = await client.get('/api/reservations/kits');
+  if (!isRecord(response) || !Array.isArray(response.data) || typeof response.kit_qr_required !== 'boolean')
+    invalid('available kits response');
+  return {
+    kitQrRequired: response.kit_qr_required,
+    kits: response.data.map((value) => {
+      if (
+        !isRecord(value)
+        || typeof value.status !== 'string'
+        || typeof value.item_name !== 'string'
+        || typeof value.kit_type_name !== 'string'
+      ) invalid('available kit');
+      return {
+        unit_id: positiveInt(value.unit_id, 'kit unit ID'),
+        status: value.status,
+        item_name: value.item_name,
+        kit_type_id: positiveInt(value.kit_type_id, 'kit type ID'),
+        kit_type_name: value.kit_type_name,
+        slot_count: positiveInt(value.slot_count, 'slot count'),
+      };
+    }),
+  };
+}
+
 export interface FrameRequest {
-  qrText: string;
+  // Exactly one way to identify the unit: the scanned QR text, a kit picked from the
+  // list (checkout), or the loan being returned (kit returns need nothing else).
+  qrText?: string;
+  kitUnitId?: number;
   imageB64: string;
   purpose: ScanPurpose;
   reservationId?: number;
@@ -228,7 +272,8 @@ export interface FrameRequest {
 }
 
 const frameBody = (request: FrameRequest) => ({
-  qr_text: request.qrText,
+  ...(request.qrText !== undefined ? { qr_text: request.qrText } : {}),
+  ...(request.kitUnitId !== undefined ? { kit_unit_id: request.kitUnitId } : {}),
   image_b64: request.imageB64,
   purpose: request.purpose,
   ...(request.reservationId !== undefined ? { reservation_id: request.reservationId } : {}),
@@ -256,13 +301,17 @@ export async function verifySingleFrameApi(
 }
 
 const scanIds = (confirmation: ScanConfirmation) => ({
-  qr_text: confirmation.qrText,
+  ...(confirmation.qrText !== undefined ? { qr_text: confirmation.qrText } : {}),
   ...(confirmation.kitScanId !== undefined ? { kit_scan_id: confirmation.kitScanId } : {}),
   ...(confirmation.singleScanId !== undefined ? { single_scan_id: confirmation.singleScanId } : {}),
 });
 
 export async function borrowItemApi(confirmation: ScanConfirmation): Promise<void> {
-  await client.post('/api/reservations', scanIds(confirmation));
+  await client.post('/api/reservations', {
+    ...scanIds(confirmation),
+    // A kit picked from the list is identified by its unit id.
+    ...(confirmation.isKit && confirmation.qrText === undefined ? { kit_unit_id: confirmation.unitId } : {}),
+  });
 }
 
 export async function returnItemApi(

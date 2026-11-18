@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AppState,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -18,9 +19,11 @@ import { useIsFocused } from 'expo-router';
 import { ApiError, getErrorMessage } from '@/api/client';
 import {
   RETURN_FLAG_LABELS,
+  getAvailableKitsApi,
   resolveUnitApi,
   verifyKitFrameApi,
   verifySingleFrameApi,
+  type AvailableKit,
   type KitScanResult,
   type ResolvedUnit,
   type ScanConfirmation,
@@ -34,8 +37,9 @@ import { parseQrToken } from '@/utils/qr';
 
 interface QRScannerProps {
   purpose: ScanPurpose;
-  // Required for returns: the loan being closed. The scanned QR must be its unit.
-  reservation?: { id: number; itemUnitId: number };
+  // Required for returns: the loan being closed. A single item's scanned QR must be
+  // its unit; a kit is checked by contents only, so the camera starts counting at once.
+  reservation?: { id: number; itemUnitId: number; isKit: boolean; itemName: string };
   actionLabel: string;
   busy: boolean;
   error: string | null;
@@ -43,10 +47,23 @@ interface QRScannerProps {
 }
 
 type ScannerPhase = 'scanning' | 'resolving' | 'polling' | 'official' | 'complete';
+type ScanMode = 'single' | 'kit';
 
 interface ScanTarget extends ResolvedUnit {
-  qrText: string;
-  token: string;
+  // Absent for a kit picked from the list and for kit returns.
+  qrText?: string;
+  token?: string;
+}
+
+function kitReturnTarget(reservation: QRScannerProps['reservation']): ScanTarget | null {
+  if (!reservation?.isKit) return null;
+  return {
+    item_unit_id: reservation.itemUnitId,
+    is_kit: true,
+    item_name: reservation.itemName,
+    status: 'Borrowed',
+    slot_count: null,
+  };
 }
 
 type FrameResult =
@@ -128,8 +145,14 @@ export function QRScanner({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [modelUnavailable, setModelUnavailable] = useState(false);
-  const [target, setTarget] = useState<ScanTarget | null>(null);
-  const [phase, setPhase] = useState<ScannerPhase>('scanning');
+  const initialTarget = purpose === 'return' ? kitReturnTarget(reservation) : null;
+  const [mode, setMode] = useState<ScanMode>(initialTarget ? 'kit' : 'single');
+  const [kits, setKits] = useState<AvailableKit[]>([]);
+  const [kitQrRequired, setKitQrRequired] = useState(false);
+  const [kitsLoading, setKitsLoading] = useState(false);
+  const [kitsError, setKitsError] = useState<string | null>(null);
+  const [target, setTarget] = useState<ScanTarget | null>(initialTarget);
+  const [phase, setPhase] = useState<ScannerPhase>(initialTarget ? 'polling' : 'scanning');
   const [cameraReady, setCameraReady] = useState(false);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [latest, setLatest] = useState<FrameResult | null>(null);
@@ -141,7 +164,7 @@ export function QRScanner({
   const cameraRef = useRef<CameraView>(null);
   const cameraSizesLoaded = useRef(false);
   const permissionRequested = useRef(false);
-  const targetRef = useRef<ScanTarget | null>(null);
+  const targetRef = useRef<ScanTarget | null>(initialTarget);
   const resolvingRef = useRef(false);
   // Last time a different QR code was seen while checking this target.
   const foreignQrAt = useRef(0);
@@ -195,6 +218,40 @@ export function QRScanner({
     setCameraReady(true);
   }, [pictureSize]);
 
+  const loadKits = useCallback(async () => {
+    setKitsLoading(true);
+    setKitsError(null);
+    try {
+      const result = await getAvailableKitsApi();
+      setKits(result.kits);
+      setKitQrRequired(result.kitQrRequired);
+    } catch (loadError) {
+      setKitsError(getErrorMessage(loadError, 'Could not load available kits.'));
+    } finally {
+      setKitsLoading(false);
+    }
+  }, []);
+
+  // Kit checkout without stickers: the student picks the box from the list.
+  const kitPickerVisible = purpose === 'checkout' && mode === 'kit' && !kitQrRequired && target === null;
+
+  const selectKit = (kit: AvailableKit) => {
+    const next: ScanTarget = {
+      item_unit_id: kit.unit_id,
+      is_kit: true,
+      item_name: kit.item_name,
+      status: kit.status,
+      slot_count: kit.slot_count,
+    };
+    targetRef.current = next;
+    foreignQrAt.current = 0;
+    setTarget(next);
+    setLatest(null);
+    setScanError(null);
+    setConsecutiveSuccesses(0);
+    setPhase('polling');
+  };
+
   const resolveTarget = useCallback(async (qrText: string, token: string) => {
     resolvingRef.current = true;
     setPhase('resolving');
@@ -203,6 +260,12 @@ export function QRScanner({
       const unit = await resolveUnitApi(qrText);
       if (purpose === 'return' && reservation && unit.item_unit_id !== reservation.itemUnitId) {
         throw new Error('This QR code belongs to a different item than the one you are returning.');
+      }
+      if (purpose === 'checkout' && mode === 'single' && unit.is_kit) {
+        throw new Error('This QR code is on a kit. Switch to Kit mode.');
+      }
+      if (purpose === 'checkout' && mode === 'kit' && !unit.is_kit) {
+        throw new Error('This QR code is on a single item. Switch to Single item mode.');
       }
       if (purpose === 'checkout' && !BORROWABLE.includes(unit.status)) {
         throw new Error(`${unit.item_name} is not available to borrow right now.`);
@@ -220,23 +283,23 @@ export function QRScanner({
     } finally {
       resolvingRef.current = false;
     }
-  }, [purpose, reservation]);
+  }, [mode, purpose, reservation]);
 
   const handleBarcodeScanned = useCallback(({ data }: BarcodeScanningResult) => {
     const token = parseQrToken(data);
     const current = targetRef.current;
     if (current) {
       // Another sticker in view while checking: don't count this frame towards the streak.
-      if (token && token !== current.token) foreignQrAt.current = Date.now();
+      if (token && current.token && token !== current.token) foreignQrAt.current = Date.now();
       return;
     }
-    if (resolvingRef.current) return;
+    if (resolvingRef.current || kitPickerVisible) return;
     if (!token) {
       setScanError('This is not a lab item QR code.');
       return;
     }
     void resolveTarget(data.trim(), token);
-  }, [resolveTarget]);
+  }, [kitPickerVisible, resolveTarget]);
 
   // Self-throttling capture loop: one request in flight; N clear frames in a row,
   // then one full-resolution official frame that the server saves.
@@ -273,8 +336,10 @@ export function QRScanner({
         timedOut = true;
         controller?.abort();
       }, official ? OFFICIAL_TIMEOUT_MS : PREVIEW_TIMEOUT_MS);
+      const pickedKit = purpose === 'checkout' && target.is_kit && target.qrText === undefined;
       const request = {
         qrText: target.qrText,
+        kitUnitId: pickedKit ? target.item_unit_id : undefined,
         imageB64,
         purpose,
         reservationId: reservation?.id,
@@ -374,8 +439,9 @@ export function QRScanner({
   };
 
   const resetScanner = () => {
-    targetRef.current = null;
-    setTarget(null);
+    // A kit return goes straight back to counting; everything else back to the QR/list step.
+    targetRef.current = initialTarget;
+    setTarget(initialTarget);
     setConfirmation(null);
     setLatest(null);
     setConsecutiveSuccesses(0);
@@ -383,7 +449,15 @@ export function QRScanner({
     setModelUnavailable(false);
     setCameraError(null);
     setCameraReady(false);
-    setPhase('scanning');
+    setPhase(initialTarget ? 'polling' : 'scanning');
+    if (purpose === 'checkout' && mode === 'kit') void loadKits();
+  };
+
+  const switchMode = (next: ScanMode) => {
+    if (busy || target !== null) return;
+    setMode(next);
+    setScanError(null);
+    if (next === 'kit') void loadKits();
   };
 
   const retryCamera = () => {
@@ -398,12 +472,13 @@ export function QRScanner({
     && isFocused
     && appActive
     && !busy
+    && !kitPickerVisible
     && phase !== 'complete';
   const showPermissionFallback =
     permission?.granted !== true || permissionError !== null || cameraError !== null;
 
   const guideText = !target
-    ? 'Center the QR code sticker'
+    ? mode === 'kit' ? 'Center the QR code on the kit box' : 'Center the QR code sticker'
     : target.is_kit
       ? 'Frame the whole open kit'
       : 'Keep the item and its QR code in frame';
@@ -429,10 +504,69 @@ export function QRScanner({
           ? target.is_kit
             ? 'Open the kit and hold the camera over it until the counts are confirmed.'
             : 'Hold the item with its QR sticker visible until it is confirmed.'
-          : 'Point the camera at the QR sticker on the item or kit box.'}
+          : kitPickerVisible
+            ? 'Choose the kit box you are holding. Check that its unit number matches.'
+            : mode === 'kit'
+              ? 'Point the camera at the QR code on the kit box.'
+              : 'Point the camera at the QR sticker on the item.'}
       </Text>
 
-      {permission === null ? (
+      {purpose === 'checkout' ? (
+        <View style={styles.modeSwitch} accessibilityRole="tablist">
+          {(['single', 'kit'] as const).map((value) => (
+            <Pressable
+              key={value}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: mode === value }}
+              disabled={busy || target !== null}
+              onPress={() => switchMode(value)}
+              style={[styles.modeButton, mode === value && styles.modeButtonSelected]}
+            >
+              <Text style={[styles.modeText, mode === value && styles.modeTextSelected]}>
+                {value === 'single' ? 'Single item' : 'Kit'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+
+      {kitPickerVisible ? (
+        <View style={styles.panel}>
+          {kitsLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator accessibilityLabel="Loading available kits" />
+              <Text style={styles.description}>Loading available kits...</Text>
+            </View>
+          ) : null}
+          {kitsError ? <InlineNotice message={kitsError} tone="error" /> : null}
+          {!kitsLoading && !kitsError && kits.length === 0 ? (
+            <InlineNotice message="No kits are available to borrow right now." tone="info" />
+          ) : null}
+          {kits.map((kit) => (
+            <Pressable
+              key={kit.unit_id}
+              accessibilityRole="button"
+              disabled={busy || kitsLoading}
+              onPress={() => selectKit(kit)}
+              style={styles.kitOption}
+            >
+              <Text style={styles.kitOptionTitle}>{kit.item_name} · Unit {kit.unit_id}</Text>
+              <Text style={styles.description}>
+                {kit.kit_type_name} · {kit.slot_count} slots · {kit.status}
+              </Text>
+            </Pressable>
+          ))}
+          <AppButton
+            label="Refresh kits"
+            onPress={() => void loadKits()}
+            busy={kitsLoading}
+            disabled={kitsLoading}
+            variant="secondary"
+          />
+        </View>
+      ) : null}
+
+      {kitPickerVisible ? null : permission === null ? (
         <View style={styles.loading}>
           <ActivityIndicator accessibilityLabel="Checking camera permission" />
           <Text style={styles.description}>Checking camera permission...</Text>
@@ -642,6 +776,39 @@ const styles = StyleSheet.create({
   },
   panel: {
     gap: Spacing.two,
+  },
+  modeSwitch: {
+    flexDirection: 'row',
+    gap: Spacing.one,
+    padding: 4,
+    borderRadius: 10,
+    backgroundColor: Colors.light.backgroundElement,
+  },
+  modeButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: Spacing.two,
+    borderRadius: 8,
+  },
+  modeButtonSelected: {
+    backgroundColor: Colors.light.background,
+  },
+  modeText: {
+    color: Colors.light.textSecondary,
+    fontWeight: '600',
+  },
+  modeTextSelected: {
+    color: Colors.light.text,
+  },
+  kitOption: {
+    gap: 4,
+    padding: Spacing.two,
+    borderRadius: 8,
+    backgroundColor: Colors.light.backgroundElement,
+  },
+  kitOptionTitle: {
+    color: Colors.light.text,
+    fontWeight: '600',
   },
   countText: {
     color: Colors.light.text,
