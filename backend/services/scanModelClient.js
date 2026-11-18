@@ -1,5 +1,6 @@
 // HTTP client for the Python scan server. Validates everything it returns.
 import { AppError } from '../utils/AppError.js';
+import { scanLog } from '../utils/scanLog.js';
 import { KIT_STATUSES, classifyKit } from './scanRules.js';
 
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
@@ -26,24 +27,38 @@ export const decodeJpeg = (imageB64) => {
 };
 
 const post = async (path, body, { official, label }) => {
+  const url = `${modelUrl()}${path}`;
+  const imageKb = Math.round((body.image_b64.length * 3) / 4 / 1024);
+  const timeoutMs = official ? OFFICIAL_TIMEOUT_MS : PREVIEW_TIMEOUT_MS;
+  const started = Date.now();
   let response;
   try {
-    response = await fetch(`${modelUrl()}${path}`, {
+    response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(official ? OFFICIAL_TIMEOUT_MS : PREVIEW_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    throw new AppError(
-      error?.name === 'TimeoutError' ? `${label} timed out` : `${label} is unavailable`,
-      503,
-    );
+    const timedOut = error?.name === 'TimeoutError';
+    scanLog('model.fail', {
+      url, official, image_kb: imageKb, ms: Date.now() - started,
+      reason: timedOut ? `timeout after ${timeoutMs} ms` : (error?.cause?.code ?? error?.message),
+    });
+    throw new AppError(timedOut ? `${label} timed out` : `${label} is unavailable`, 503);
   }
   let result;
   try { result = await response.json(); }
-  catch { throw new AppError(`${label} returned an invalid response`, 502); }
-  if (!response.ok) throw new AppError(`${label} rejected the image`, 502);
+  catch {
+    scanLog('model.fail', { url, http: response.status, ms: Date.now() - started, reason: 'non-JSON response' });
+    throw new AppError(`${label} returned an invalid response`, 502);
+  }
+  if (!response.ok) {
+    // FastAPI puts validation errors (bad image, etc.) in "detail".
+    scanLog('model.fail', { url, http: response.status, ms: Date.now() - started, detail: result?.detail });
+    throw new AppError(`${label} rejected the image`, 502);
+  }
+  scanLog('model.ok', { url, official, image_kb: imageKb, ms: Date.now() - started });
   return result;
 };
 

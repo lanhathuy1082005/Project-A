@@ -13,10 +13,12 @@ import binascii
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from io import BytesIO
 import os
 from pathlib import Path
 from threading import Lock
+from time import perf_counter
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -28,6 +30,14 @@ from pydantic import BaseModel, Field, field_validator
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 log = logging.getLogger("scan_service")
+# uvicorn's logger is configured to print, so debug lines show in the server console.
+debug_log = logging.getLogger("uvicorn.error")
+
+# SCAN_DEBUG=true logs every frame (size, inference time, boxes and near misses).
+# SCAN_DEBUG_SAVE_DIR=<folder> also saves each received frame as a JPEG there.
+SCAN_DEBUG = os.getenv("SCAN_DEBUG") == "true"
+SCAN_DEBUG_SAVE_DIR = os.getenv("SCAN_DEBUG_SAVE_DIR") or None
+DEBUG_NEAR_MISS_THRESHOLD = 0.2
 
 WEIGHTS_DIR = Path(__file__).resolve().parent / "scan_weights"
 MAX_SCAN_IMAGE_BYTES = 7 * 1024 * 1024
@@ -112,11 +122,31 @@ class ScanModel:
         # Warm-up so the first student does not pay for lazy initialisation.
         self.model.predict(Image.new("RGB", (640, 480)), threshold=self.detection_threshold)
 
-    def predict(self, image: bytes):
+    def predict(self, image: bytes, kind: str) -> list[tuple[str, float, tuple]]:
+        """Detections at or above the detection threshold as (class, confidence, box).
+
+        With SCAN_DEBUG the model runs at a lower threshold so near misses can be
+        logged; they are dropped before anything is returned.
+        """
         if self.model is None:
             raise HTTPException(503, f"{self.name} model is not loaded")
+        threshold = min(DEBUG_NEAR_MISS_THRESHOLD, self.detection_threshold) if SCAN_DEBUG \
+            else self.detection_threshold
+        started = perf_counter()
         with Image.open(BytesIO(image)) as source, self.lock:
-            return self.model.predict(source.convert("RGB"), threshold=self.detection_threshold)
+            size = source.size
+            prediction = self.model.predict(source.convert("RGB"), threshold=threshold)
+        ms = (perf_counter() - started) * 1000
+        found = [
+            (self.class_name(class_id), float(confidence), tuple(float(v) for v in box))
+            for box, confidence, class_id in zip(
+                prediction.xyxy, prediction.confidence, prediction.class_id
+            )
+        ]
+        kept = [d for d in found if d[1] >= self.detection_threshold]
+        if SCAN_DEBUG:
+            debug_frame(kind, image, size, ms, kept, [d for d in found if d[1] < self.detection_threshold])
+        return kept
 
     def class_name(self, class_id) -> str:
         index = int(class_id) - 1
@@ -211,28 +241,53 @@ class ClassesResponse(BaseModel):
 # ── Inference ────────────────────────────────────────────────────────────────
 
 def predict_kit_contents(image: bytes) -> tuple[KitCounts, float]:
-    prediction = KIT_MODEL.predict(image)
     counts = {name: 0 for name in KIT_MODEL.class_names}
     confidences = []
-    for confidence, class_id in zip(prediction.confidence, prediction.class_id):
-        counts[KIT_MODEL.class_name(class_id)] += 1
-        confidences.append(float(confidence))
+    for class_name, confidence, _box in KIT_MODEL.predict(image, "kit"):
+        counts[class_name] += 1
+        confidences.append(confidence)
     # The weakest detection decides how sure the whole count is.
     return counts, min(confidences, default=0.0)
 
 
 def predict_single_detections(image: bytes) -> list[SingleDetection]:
-    prediction = SINGLE_MODEL.predict(image)
     return [
-        SingleDetection(
-            class_name=SINGLE_MODEL.class_name(class_id),
-            confidence=float(confidence),
-            box=tuple(float(value) for value in box),
-        )
-        for box, confidence, class_id in zip(
-            prediction.xyxy, prediction.confidence, prediction.class_id
-        )
+        SingleDetection(class_name=class_name, confidence=confidence, box=box)
+        for class_name, confidence, box in SINGLE_MODEL.predict(image, "single")
     ]
+
+
+# ── Debug logging (SCAN_DEBUG=true) ──────────────────────────────────────────
+
+def _summary(detections) -> str:
+    if not detections:
+        return "none"
+    if len(detections) > 8:  # kits: counts per class are more readable than 36 boxes
+        totals: dict[str, int] = {}
+        for class_name, _conf, _box in detections:
+            totals[class_name] = totals.get(class_name, 0) + 1
+        low = min(conf for _name, conf, _box in detections)
+        return ", ".join(f"{n}x{c}" for c, n in sorted(totals.items())) + f" (lowest {low:.2f})"
+    return ", ".join(f"{c}@{conf:.2f}" for c, conf, _box in detections)
+
+
+def debug_frame(kind, image: bytes, size, ms: float, kept, near_misses) -> None:
+    debug_log.info(
+        "[scan] %s frame %dx%d %dKB infer=%.0fms kept=[%s] near_miss<%.2f=[%s]",
+        kind, size[0], size[1], len(image) // 1024, ms,
+        _summary(kept), KIT_DETECTION_THRESHOLD if kind == "kit" else SINGLE_DETECTION_THRESHOLD,
+        _summary(near_misses),
+    )
+    if not SCAN_DEBUG_SAVE_DIR:
+        return
+    try:
+        folder = Path(SCAN_DEBUG_SAVE_DIR)
+        folder.mkdir(parents=True, exist_ok=True)
+        label = "_".join(sorted({c for c, _conf, _box in kept})) or "none"
+        stamp = datetime.now().strftime("%H%M%S_%f")[:-3]
+        (folder / f"{stamp}_{kind}_{label}.jpg").write_bytes(image)
+    except OSError as error:
+        debug_log.warning("[scan] could not save debug frame: %s", error)
 
 
 def classify_kit_contents(

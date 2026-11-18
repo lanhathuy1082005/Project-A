@@ -4,6 +4,7 @@ import cors       from 'cors';
 import { sessionMiddleware } from './config/session.js';
 import { apiLimiter }        from './middleware/rateLimiter.js';
 import { errorHandler }      from './middleware/errorHandler.js';
+import { scanDebug, scanLog } from './utils/scanLog.js';
 import authRoutes            from './routes/auth.routes.js';
 import reservationRoutes     from './routes/reservation.routes.js';
 import unitRoutes            from './routes/units.routes.js';
@@ -32,7 +33,21 @@ app.use(cors({
 }));
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));  
+// SCAN_DEBUG: log every scan-related HTTP request with its final status, including
+// ones rejected before the handler (401 not logged in, 413 too large, 429 rate limit).
+app.use((req, res, next) => {
+  if (!scanDebug() || !/^\/api\/(reservations\/scan-frame|units\/resolve|reservations\/?$|reservations\/\d+\/return)/.test(req.path)) {
+    return next();
+  }
+  const started = Date.now();
+  const path = req.path; // routers rewrite req.path before 'finish'
+  res.on('finish', () => scanLog('http', {
+    method: req.method, path, status: res.statusCode,
+    bytes: req.headers['content-length'], ms: Date.now() - started,
+  }));
+  next();
+});
+app.use(express.json({ limit: '10mb' }));
 app.use(sessionMiddleware);
 app.use('/api', apiLimiter);               
 

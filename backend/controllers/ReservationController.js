@@ -2,6 +2,7 @@ import { makeReservation, returnItem,
          getMyReservations, getAdminReservations,
          verifyKitFrame, verifySingleFrame,
          getAvailableKits, resolveUnit }                from '../services/ReservationService.js';
+import { scanLog }                                    from '../utils/scanLog.js';
 
 export const handleBorrow = async (req, res, next) => {
   try {
@@ -44,19 +45,43 @@ export const handleGetAllReservations = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-export const handleVerifyKitFrame = async (req, res, next) => {
+// Logs each scan frame request and how it ended (SCAN_DEBUG=true).
+const scanFrameHandler = (kind, verify) => async (req, res, next) => {
+  const body = req.body ?? {};
+  const started = Date.now();
+  const request = {
+    user: req.session.user.id,
+    purpose: body.purpose ?? 'checkout',
+    qr: typeof body.qr_text === 'string' ? body.qr_text : undefined,
+    kit_unit: body.kit_unit_id,
+    reservation: body.reservation_id,
+    official: body.persist_scan === true,
+    image_kb: typeof body.image_b64 === 'string' ? Math.round((body.image_b64.length * 3) / 4 / 1024) : 0,
+  };
+  scanLog(`${kind}.request`, request);
   try {
-    const result = await verifyKitFrame(req.body ?? {}, req.session.user.id);
+    const result = await verify(body, req.session.user.id);
+    scanLog(`${kind}.result`, {
+      unit: result.item_unit_id,
+      status: result.status,
+      confirmable: result.confirmable,
+      ...(kind === 'kit'
+        ? { empty: result.empty_count, sensor: result.sensor_count, two: result.two_sensor_count,
+            confidence: result.confidence, scan_id: result.kit_scan_id }
+        : { detected: result.detected_item_class, item_conf: result.item_confidence,
+            qr_conf: result.qr_confidence, scan_id: result.single_scan_id }),
+      return_flag: result.return_flag,
+      total_ms: Date.now() - started,
+    });
     return res.json({ data: result });
-  } catch (err) { next(err); }
+  } catch (err) {
+    scanLog(`${kind}.error`, { http: err.statusCode ?? 500, message: err.message, total_ms: Date.now() - started });
+    next(err);
+  }
 };
 
-export const handleVerifySingleFrame = async (req, res, next) => {
-  try {
-    const result = await verifySingleFrame(req.body ?? {}, req.session.user.id);
-    return res.json({ data: result });
-  } catch (err) { next(err); }
-};
+export const handleVerifyKitFrame = scanFrameHandler('kit', verifyKitFrame);
+export const handleVerifySingleFrame = scanFrameHandler('single', verifySingleFrame);
 
 export const handleGetAvailableKits = async (req, res, next) => {
   try {

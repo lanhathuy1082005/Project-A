@@ -3,6 +3,7 @@ import { createReservation, getUserReservations,
          getAllReservations }                     from '../models/Reservation.js';
 import { AppError }                               from '../utils/AppError.js';
 import { parseQrToken }                           from '../utils/qrParser.js';
+import { scanLog }                                from '../utils/scanLog.js';
 import { callKitModel, callSingleModel }          from './scanModelClient.js';
 import { evaluateSingle, isKitBorrowable,
          kitReturnFlag, singleReturnFlag }        from './scanRules.js';
@@ -231,6 +232,12 @@ export const verifySingleFrame = async (body, user_id) => {
   const threshold = singleThreshold();
 
   const model = await callSingleModel(body.image_b64, { official: persist });
+  // Raw boxes explain an "unsure": e.g. no QR-code box, two item boxes, low confidence.
+  scanLog('single.detections', {
+    expected: unit.item_name,
+    threshold,
+    boxes: model.detections.map((d) => `${d.class_name}@${d.confidence.toFixed(2)}`),
+  });
   const evaluation = evaluateSingle(model.detections, unit.item_name, threshold);
   const returnFlag = purpose === 'return' ? singleReturnFlag(evaluation) : null;
   const confirmable = evaluation.status === 'success';
