@@ -39,11 +39,14 @@ export function ReturnItemModal({
           <Text style={historyStyles.modalTitle}>Return item</Text>
           {reservation ? (
             <Text style={historyStyles.detail}>
-              Choose a mode and scan {reservation.item_name ?? 'the item'} to return it.
+              Scan the QR sticker on {reservation.item_name ?? 'the item'}
+              {reservation.kit_type_id !== null ? ', then show the open kit' : ''} to return it.
             </Text>
           ) : null}
-          {visible ? (
+          {visible && reservation ? (
             <QRScanner
+              purpose="return"
+              reservation={{ id: reservation.id, itemUnitId: reservation.item_unit_id }}
               actionLabel="Confirm return"
               busy={submitting}
               error={error}

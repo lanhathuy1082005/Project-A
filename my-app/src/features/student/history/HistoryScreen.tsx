@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { getErrorMessage } from '@/api/client';
 import {
+  RETURN_FLAG_LABELS,
   returnItemApi,
   type Reservation,
   type ScanConfirmation,
@@ -34,6 +35,7 @@ export default function HistoryScreen() {
   const [pendingReturn, setPendingReturn] = useState<Reservation | null>(null);
   const [returnError, setReturnError] = useState<string | null>(null);
   const [returning, setReturning] = useState(false);
+  const [returnNotice, setReturnNotice] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const totalPages = Math.ceil(total / limit);
 
@@ -43,13 +45,13 @@ export default function HistoryScreen() {
     setReturning(true);
     setReturnError(null);
     try {
-      await returnItemApi(
-        pendingReturn.id,
-        pendingReturn.item_unit_id,
-        confirmation.unitId,
-        confirmation.imageB64,
-      );
+      const { returnFlag } = await returnItemApi(pendingReturn.id, confirmation);
       setPendingReturn(null);
+      setReturnNotice(
+        returnFlag
+          ? `Returned. The lab admin will check it because ${RETURN_FLAG_LABELS[returnFlag]}.`
+          : 'Returned. The lab admin will check it shortly.',
+      );
       refetch();
       setShowFeedback(true);
     } catch (requestError) {
@@ -63,6 +65,7 @@ export default function HistoryScreen() {
 
   const openReturn = (reservation: Reservation) => {
     setReturnError(null);
+    setReturnNotice(null);
     setPendingReturn(reservation);
   };
 
@@ -76,6 +79,7 @@ export default function HistoryScreen() {
             Your personal borrowing records.
           </Text>
         </View>
+        {returnNotice ? <InlineNotice message={returnNotice} tone="info" /> : null}
 
         {loading ? (
           <View style={historyStyles.center}>
