@@ -5,9 +5,9 @@ import { makeReservation, returnItem,
 
 export const handleBorrow = async (req, res, next) => {
   try {
-    const { qr_text, kit_scan_id, single_scan_id } = req.body ?? {};
+    const { qr_text, kit_unit_id, kit_scan_id, single_scan_id } = req.body ?? {};
     const reservation = await makeReservation(
-      { qr_text, kit_scan_id, single_scan_id },
+      { qr_text, kit_unit_id, kit_scan_id, single_scan_id },
       req.session.user.id,
     );
     return res.status(201).json({ message: 'Item borrowed successfully', data: reservation });
@@ -60,8 +60,8 @@ export const handleVerifySingleFrame = async (req, res, next) => {
 
 export const handleGetAvailableKits = async (req, res, next) => {
   try {
-    const kits = await getAvailableKits();
-    return res.json({ data: kits });
+    const { kits, kit_qr_required } = await getAvailableKits();
+    return res.json({ data: kits, kit_qr_required });
   } catch (err) { next(err); }
 };
 

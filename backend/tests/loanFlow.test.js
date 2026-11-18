@@ -23,6 +23,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
+  delete process.env.KIT_QR_REQUIRED;
   await seed(app.pool);
   model.kit = () => kitResult({ sensor: 6 });
   model.single = () => singleResult(det('QR-code'), det('Arduino-UNO-R3'));
@@ -37,8 +38,11 @@ const unitStatus = async (id) => (await q('SELECT status FROM item_units WHERE i
 
 const singleFrame = (cookie, token, extra = {}) => app.request('POST', '/api/reservations/scan-frame/single',
   { qr_text: link(token), image_b64: JPEG_B64, ...extra }, cookie);
+// Kits are picked by unit id while KIT_QR_REQUIRED is off (no kit stickers yet).
 const kitFrame = (cookie, extra = {}) => app.request('POST', '/api/reservations/scan-frame/kit',
-  { qr_text: link(TOKENS.kit), image_b64: JPEG_B64, ...extra }, cookie);
+  { kit_unit_id: UNITS.kit, image_b64: JPEG_B64, ...extra }, cookie);
+const kitReturnFrame = (cookie, reservationId, extra = {}) => app.request('POST', '/api/reservations/scan-frame/kit',
+  { purpose: 'return', reservation_id: reservationId, image_b64: JPEG_B64, persist_scan: true, ...extra }, cookie);
 const borrow = (cookie, token, scan) => app.request('POST', '/api/reservations',
   { qr_text: link(token), ...scan }, cookie);
 const giveBack = (cookie, id, token, scan = {}) => app.request('PATCH', `/api/reservations/${id}/return`,
@@ -56,7 +60,8 @@ const borrowKit = async (counts = { empty: 2, sensor: 3, two: 1 }) => {
   model.kit = () => kitResult(counts);
   const scan = await kitFrame(s1, { persist_scan: true });
   assert.equal(scan.status, 200, JSON.stringify(scan.body));
-  const res = await borrow(s1, TOKENS.kit, { kit_scan_id: scan.body.data.kit_scan_id });
+  const res = await app.request('POST', '/api/reservations',
+    { kit_unit_id: UNITS.kit, kit_scan_id: scan.body.data.kit_scan_id }, s1);
   assert.equal(res.status, 201, JSON.stringify(res.body));
   return res.body.data;
 };
@@ -171,6 +176,27 @@ describe('kit checkout and the empty-kit rule', () => {
     assert.equal(wrong.body.data.kit_scan_id, null);
   });
 
+  test('kit picked by unit id while KIT_QR_REQUIRED is off; refused once it is on', async () => {
+    const kits = await app.request('GET', '/api/reservations/kits', null, s1);
+    assert.equal(kits.body.kit_qr_required, false);
+    assert.deepEqual(kits.body.data.map((k) => k.unit_id), [UNITS.kit]);
+    process.env.KIT_QR_REQUIRED = 'true';
+    assert.equal((await app.request('GET', '/api/reservations/kits', null, s1)).body.kit_qr_required, true);
+    const byId = await kitFrame(s1);
+    assert.equal(byId.status, 400);
+    assert.match(byId.body.message, /Scan the QR code/);
+    const byQr = await kitFrame(s1, { kit_unit_id: undefined, qr_text: link(TOKENS.kit), persist_scan: true });
+    assert.equal(byQr.status, 200);
+    const res = await borrow(s1, TOKENS.kit, { kit_scan_id: byQr.body.data.kit_scan_id });
+    assert.equal(res.status, 201);
+  });
+
+  test('kit_unit_id cannot pick a single item', async () => {
+    assert.equal((await kitFrame(s1, { kit_unit_id: UNITS.uno })).status, 400);
+    const res = await app.request('POST', '/api/reservations', { kit_unit_id: UNITS.uno, single_scan_id: 1 }, s1);
+    assert.equal(res.status, 400);
+  });
+
   test('kit QR on the single endpoint (and vice versa) is rejected', async () => {
     assert.equal((await singleFrame(s1, TOKENS.kit)).status, 400);
     const res = await app.request('POST', '/api/reservations/scan-frame/kit',
@@ -231,6 +257,28 @@ describe('return', () => {
     assert.equal(await unitStatus(UNITS.uno), 'Needs Checking');
   });
 
+  test('kit return needs no QR, only the loan; other students cannot scan it', async () => {
+    const loan = await borrowKit();
+    assert.equal((await kitReturnFrame(s2, loan.id)).status, 404);
+    model.kit = () => kitResult({ empty: 2, sensor: 3, two: 1 });
+    const scan = await kitReturnFrame(s1, loan.id);
+    assert.equal(scan.status, 200);
+    assert.equal(scan.body.data.item_unit_id, UNITS.kit);
+    const res = await app.request('PATCH', `/api/reservations/${loan.id}/return`,
+      { kit_scan_id: scan.body.data.kit_scan_id }, s1);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.return_flag, null);
+  });
+
+  test('single-item return frames still need the matching QR', async () => {
+    const loan = await borrowSingle();
+    const frame = (qr_text) => app.request('POST', '/api/reservations/scan-frame/single',
+      { purpose: 'return', reservation_id: loan.id, image_b64: JPEG_B64, qr_text }, s1);
+    assert.equal((await frame(undefined)).status, 400);
+    assert.equal((await frame(link(TOKENS.nano))).status, 400);
+    assert.equal((await frame(link(TOKENS.uno))).status, 200);
+  });
+
   test('only the borrower can return, and only once', async () => {
     const loan = await borrowSingle();
     assert.equal((await giveBack(s2, loan.id, TOKENS.uno)).status, 404);
@@ -273,11 +321,12 @@ describe('return', () => {
       await seed(app.pool);
       const loan = await borrowKit({ empty: 2, sensor: 3, two: 1 });
       model.kit = () => kitResult(counts, options);
-      const scan = await kitFrame(s1, { purpose: 'return', reservation_id: loan.id, persist_scan: true });
+      const scan = await kitReturnFrame(s1, loan.id);
       assert.equal(scan.status, 200);
       assert.equal(scan.body.data.return_flag, expected, JSON.stringify(counts));
       assert.ok(scan.body.data.kit_scan_id, 'return scans are always saved');
-      const res = await giveBack(s1, loan.id, TOKENS.kit, { kit_scan_id: scan.body.data.kit_scan_id });
+      const res = await app.request('PATCH', `/api/reservations/${loan.id}/return`,
+        { kit_scan_id: scan.body.data.kit_scan_id }, s1);
       assert.equal(res.status, 200);
       assert.equal(res.body.data.return_flag, expected);
       assert.equal(await unitStatus(UNITS.kit), 'Needs Checking');

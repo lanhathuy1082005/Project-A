@@ -16,6 +16,9 @@ const singleThreshold = () => {
   return value;
 };
 const labTimeZone = () => process.env.LAB_TIMEZONE || 'Asia/Bangkok';
+// Kit boxes will carry QR stickers; until they do, a student picks the kit unit from
+// the list. Set KIT_QR_REQUIRED=true once every kit box has a registered sticker.
+export const kitQrRequired = () => process.env.KIT_QR_REQUIRED === 'true';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const requireToken = (qr_text) => {
@@ -51,6 +54,30 @@ const findUnitByToken = async (db, token, { lock = false } = {}) => {
   return rows[0];
 };
 
+const findUnitById = async (db, id, { lock = false } = {}) => {
+  const { rows } = await db.query(
+    `SELECT ${UNIT_COLUMNS} ${UNIT_FROM} WHERE iu.id = $1 ${lock ? 'FOR UPDATE OF iu' : ''}`,
+    [id],
+  );
+  if (!rows[0]) throw new AppError('Item unit not found', 404);
+  return rows[0];
+};
+
+// Checkout identifies the unit by its QR sticker. Kits may instead be picked by unit
+// id while KIT_QR_REQUIRED is off.
+const findCheckoutUnit = async (db, { qr_text, kit_unit_id }, { lock = false } = {}) => {
+  if (qr_text !== undefined && qr_text !== null)
+    return findUnitByToken(db, requireToken(qr_text), { lock });
+  if (kit_unit_id !== undefined && kit_unit_id !== null) {
+    if (kitQrRequired()) throw new AppError('Scan the QR code on the kit box', 400);
+    const unit = await findUnitById(db, positiveId(kit_unit_id, 'kit_unit_id'), { lock });
+    if (unit.kit_type_id === null)
+      throw new AppError('This unit is a single item; scan its QR code instead', 400);
+    return unit;
+  }
+  throw new AppError('Scan the QR code on the item', 400);
+};
+
 const assertKitConfigured = (unit) => {
   if (unit.kit_type_id !== null && !(unit.slot_count > 0))
     throw new AppError('This kit type has no valid slot count', 409);
@@ -68,31 +95,42 @@ const purgeExpiredScans = async () => {
   );
 };
 
-// Resolves the unit a scan frame is about. For a return the QR must belong to the
-// caller's open loan; for a checkout the unit must be borrowable.
-const loadScanTarget = async ({ qr_text, purpose = 'checkout', reservation_id }, user_id) => {
+// Resolves the unit a scan frame is about. Checkout: by QR (or picked kit unit id) and
+// the unit must be borrowable. Return: the unit comes from the caller's open loan;
+// single items must also show their QR, kits are checked by contents only.
+const loadScanTarget = async (body, user_id, kind) => {
+  const purpose = body.purpose ?? 'checkout';
   if (purpose !== 'checkout' && purpose !== 'return')
     throw new AppError("purpose must be 'checkout' or 'return'", 400);
-  const unit = await findUnitByToken(pool, requireToken(qr_text));
-  assertKitConfigured(unit);
 
   if (purpose === 'checkout') {
+    const unit = await findCheckoutUnit(pool, body);
+    assertKitConfigured(unit);
     if (!BORROWABLE_STATUSES.includes(unit.status))
       throw new AppError('This item is not currently available to borrow', 409);
     return { unit, purpose };
   }
 
-  const reservationId = positiveId(reservation_id, 'reservation_id');
+  const reservationId = positiveId(body.reservation_id, 'reservation_id');
   const { rows } = await pool.query(
     `SELECT id, item_unit_id FROM reservations
       WHERE id = $1 AND user_id = $2 AND actual_return_date IS NULL`,
     [reservationId, user_id],
   );
   if (!rows[0]) throw new AppError('You have no open loan with this id', 404);
-  if (rows[0].item_unit_id !== unit.item_unit_id)
-    throw new AppError('This QR code does not belong to the item you are returning', 400);
+  const unit = await findUnitById(pool, rows[0].item_unit_id);
+  assertKitConfigured(unit);
+  if (kind === 'single' && unit.kit_type_id === null) assertQrMatches(unit, body.qr_text);
   return { unit, purpose, reservationId };
 };
+
+function assertQrMatches(unit, qr_text) {
+  const token = requireToken(qr_text);
+  if (!unit.qr_token)
+    throw new AppError('This item has no registered QR code; ask the lab admin', 409);
+  if (unit.qr_token !== token)
+    throw new AppError('This QR code does not belong to the item you are returning', 400);
+}
 
 const checkoutKitCounts = async (db, reservationId) => {
   const { rows } = await db.query(
@@ -121,7 +159,7 @@ export const getAvailableKits = async () => {
      WHERE iu.status IN ('Available', 'Needs Checking')
      ORDER BY i.name, iu.id`,
   );
-  return rows;
+  return { kits: rows, kit_qr_required: kitQrRequired() };
 };
 
 export const resolveUnit = async ({ qr_text }) => {
@@ -136,7 +174,7 @@ export const resolveUnit = async ({ qr_text }) => {
 };
 
 export const verifyKitFrame = async (body, user_id) => {
-  const { unit, purpose, reservationId } = await loadScanTarget(body, user_id);
+  const { unit, purpose, reservationId } = await loadScanTarget(body, user_id, 'kit');
   if (unit.kit_type_id === null)
     throw new AppError('This QR code identifies a single item, not a kit', 400);
   const persist = body.persist_scan === true;
@@ -186,7 +224,7 @@ export const verifyKitFrame = async (body, user_id) => {
 };
 
 export const verifySingleFrame = async (body, user_id) => {
-  const { unit, purpose } = await loadScanTarget(body, user_id);
+  const { unit, purpose } = await loadScanTarget(body, user_id, 'single');
   if (unit.kit_type_id !== null)
     throw new AppError('This QR code identifies a kit, not a single item', 400);
   const persist = body.persist_scan === true;
@@ -230,8 +268,7 @@ export const verifySingleFrame = async (body, user_id) => {
   };
 };
 
-export const makeReservation = async ({ qr_text, kit_scan_id, single_scan_id }, user_id) => {
-  const token = requireToken(qr_text);
+export const makeReservation = async ({ qr_text, kit_unit_id, kit_scan_id, single_scan_id }, user_id) => {
   const kitScanId = optionalId(kit_scan_id, 'kit_scan_id');
   const singleScanId = optionalId(single_scan_id, 'single_scan_id');
 
@@ -239,7 +276,7 @@ export const makeReservation = async ({ qr_text, kit_scan_id, single_scan_id }, 
   try {
     await client.query('BEGIN');
 
-    const unit = await findUnitByToken(client, token, { lock: true });
+    const unit = await findCheckoutUnit(client, { qr_text, kit_unit_id }, { lock: true });
     if (unit.status === 'Broken')
       throw new AppError('This device is broken and cannot be borrowed', 400);
     if (unit.status === 'Borrowed')
@@ -322,15 +359,15 @@ export const makeReservation = async ({ qr_text, kit_scan_id, single_scan_id }, 
   }
 };
 
-// Closes the caller's open loan. The unit comes from the reservation, the scanned QR
-// must match it, and the return scan (if any) decides the flag. A missing or failed
+// Closes the caller's open loan. The unit comes from the reservation; a single item's
+// scanned QR must match it (kits are checked by contents only), and the return scan
+// (if any) decides the flag. A missing or failed
 // scan never blocks the return: the loan closes with a flag for the admin.
 export const returnItem = async (
   { reservation_id, qr_text, kit_scan_id, single_scan_id },
   user_id,
 ) => {
   const reservationId = positiveId(reservation_id, 'reservation id');
-  const token = requireToken(qr_text);
   const kitScanId = optionalId(kit_scan_id, 'kit_scan_id');
   const singleScanId = optionalId(single_scan_id, 'single_scan_id');
   if (kitScanId !== null && singleScanId !== null)
@@ -354,12 +391,8 @@ export const returnItem = async (
       [reservation.item_unit_id],
     );
     const unit = unitRows[0];
-    if (!unit.qr_token)
-      throw new AppError('This item has no registered QR code; ask the lab admin', 409);
-    if (unit.qr_token !== token)
-      throw new AppError('This QR code does not belong to the item you are returning', 400);
-
     const isKit = unit.kit_type_id !== null;
+    if (!isKit) assertQrMatches(unit, qr_text);
     if (isKit && singleScanId !== null)
       throw new AppError('A single-item scan cannot be used to return a kit', 400);
     if (!isKit && kitScanId !== null)
